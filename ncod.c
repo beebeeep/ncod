@@ -1,17 +1,14 @@
-// vim: tw=120
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/errno.h>
-#include <string.h>
 #include <readpassphrase.h>
-
 #include <sodium.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/errno.h>
+#include <unistd.h>
 
-#define ERROR(...) (fprintf(stderr, __VA_ARGS__))
+#include "misc.h"
 
 #define MOD_ENCODE 1
 #define MOD_DECODE 2
-#define PW_LEN 33
 #define STORAGE_LEN 64
 #define CIPHER_LEN (STORAGE_LEN + crypto_secretbox_MACBYTES)
 #define ID_LEN 32
@@ -26,7 +23,19 @@ typedef struct {
     char id[ID_LEN];
     char user[USER_LEN];
     char secret[SECRET_LEN];
-} secretRecord ;
+} secretRecord;
+
+void dump(unsigned char *d, size_t l) {
+    for (size_t i = 0; i < l; i++) {
+        printf("%x ", d[i]);
+        if (i != 0 && i % 16 == 15) {
+            printf("\n");
+        } else if (i != 0 && i % 16 == 7) {
+            printf(" ");
+        }
+    }
+    printf("\n");
+}
 
 int main(int argc, char *argv[]) {
     if (sodium_init() != 0) {
@@ -35,18 +44,19 @@ int main(int argc, char *argv[]) {
     }
 
     int ch;
-    while ((ch = getopt(argc, argv, "ed")) != -1) {
+    while ((ch = getopt(argc, argv, "ied")) != -1) {
         switch (ch) {
-            case 'e': 
-                return encode(argv[optind]);
-                break;
-            case 'd':
-                return decode(argv[optind]);
-                break;
-            case '?':
-            default:
-                ERROR("Usage:\nncod -e FILE\t\tEncode stdin to file\nncod -d FILE\t\tDecode file to stdin\n");
-                return -1;
+        case 'e':
+            return encode(argv[optind]);
+            break;
+        case 'd':
+            return decode(argv[optind]);
+            break;
+        case '?':
+        default:
+            ERROR("Usage:\nncod -e FILE\t\tEncode stdin to file\nncod -d "
+                  "FILE\t\tDecode file to stdin\n");
+            return -1;
         }
     }
 
@@ -67,30 +77,11 @@ int encode(char *filename) {
         ERROR("cannot allocate memory\n");
     }
 
-
-    int i;
-    for (i = 0; i < 3; i++) {
-        readpassphrase("Password: ", (char *)pw1, PW_LEN, 0);
-        readpassphrase("Repeat password: ", (char *)pw2, PW_LEN, 0);
-        if (strncmp((char *)pw1, (char *)pw2, PW_LEN) != 0) {
-            ERROR("password does not match, try again\n");
-        } else {
-            goto encode_pw_ok;
-        }
-    }
-    ERROR("cannot read password\n");
-    result = -1;
-    goto encode_cleanup;
-
-encode_pw_ok:
-    randombytes_buf(salt, crypto_pwhash_SALTBYTES);
-    if(crypto_pwhash(key, crypto_secretbox_KEYBYTES, (char *)pw1, PW_LEN, salt, 
-            crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE, crypto_pwhash_ALG_DEFAULT) != 0) {
-        ERROR("Key derivation failed\n");
+    if (derive_key(key, salt, nonce, NULL, 1) != 0) {
+        ERROR("cannot read password\n");
         result = -1;
         goto encode_cleanup;
     }
-    randombytes_buf(nonce, crypto_secretbox_NONCEBYTES);
 
     FILE *file = fopen(filename, "wb");
     if (file == NULL) {
@@ -110,7 +101,7 @@ encode_pw_ok:
         result = -1;
         goto encode_cleanup;
     }
-    
+
     // read input, encode it and write to the file
     if (fread(msg, STORAGE_LEN, 1, stdin) < 1) {
         ERROR("cannot read input\n");
@@ -140,7 +131,7 @@ encode_cleanup:
     sodium_free(msg);
     sodium_free(ciphertext);
 
-    return result; 
+    return result;
 }
 
 int decode(char *filename) {
@@ -157,14 +148,8 @@ int decode(char *filename) {
     unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
     unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_LEN);
     unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_LEN);
-    
-    if (fread(salt, sizeof(salt), 1, file) < 0) {
-        ERROR("cannot read container\n");
-        result = -1;
-        goto decode_cleanup;
-    }
-    if (fread(nonce, sizeof(nonce), 1, file) < 0) {
-        ERROR("cannot read container\n");
+    if (derive_key(key, salt, nonce, file, 0) != 0) {
+        ERROR("cannot read password\n");
         result = -1;
         goto decode_cleanup;
     }
@@ -174,25 +159,13 @@ int decode(char *filename) {
         goto decode_cleanup;
     }
 
-    readpassphrase("Password: ", (char *)pw, PW_LEN, 0);
-    if(crypto_pwhash(key, crypto_secretbox_KEYBYTES, (char *)pw, PW_LEN, salt, 
-            crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE, crypto_pwhash_ALG_DEFAULT) != 0) {
-        ERROR("Key derivation failed\n");
-        result = -1;
-        goto decode_cleanup;
-    }
-
-    if(crypto_secretbox_open_easy(msg, ciphertext, CIPHER_LEN, nonce, key) != 0) {
+    if (crypto_secretbox_open_easy(msg, ciphertext, CIPHER_LEN, nonce, key) != 0) {
         ERROR("Cannot decode container\n");
         result = -1;
         goto decode_cleanup;
     };
 
-    int i = 0;
-    for (i = 0; i < STORAGE_LEN; i++) {
-        printf("%x ", msg[i]);
-    }
-    printf("\n");
+    dump(msg, STORAGE_LEN);
 
 decode_cleanup:
     sodium_memzero(pw, PW_LEN);
@@ -205,4 +178,3 @@ decode_cleanup:
 
     return result;
 }
-
