@@ -14,9 +14,19 @@
 #define PW_LEN 33
 #define STORAGE_LEN 64
 #define CIPHER_LEN (STORAGE_LEN + crypto_secretbox_MACBYTES)
+#define ID_LEN 32
+#define USER_LEN 64
+#define SECRET_LEN 512
 
 int encode(char *filename);
 int decode(char *filename);
+
+typedef struct {
+    time_t last_updated;
+    char id[ID_LEN];
+    char user[USER_LEN];
+    char secret[SECRET_LEN];
+} secretRecord ;
 
 int main(int argc, char *argv[]) {
     if (sodium_init() != 0) {
@@ -90,12 +100,12 @@ encode_pw_ok:
     }
 
     // write header
-    if (fwrite(salt, crypto_pwhash_SALTBYTES, 1, file) < 0) {
+    if (fwrite(salt, sizeof(salt), 1, file) < 0) {
         ERROR("Cannot write to %s", filename);
         result = -1;
         goto encode_cleanup;
     }
-    if (fwrite(nonce, crypto_secretbox_NONCEBYTES, 1, file) < 0) {
+    if (fwrite(nonce, sizeof(nonce), 1, file) < 0) {
         ERROR("Cannot write to %s", filename);
         result = -1;
         goto encode_cleanup;
@@ -124,7 +134,6 @@ encode_cleanup:
     sodium_memzero(pw2, PW_LEN);
     sodium_memzero(msg, STORAGE_LEN);
     sodium_memzero(key, crypto_secretbox_KEYBYTES);
-    sodium_memzero(ciphertext, CIPHER_LEN);
     sodium_free(pw1);
     sodium_free(pw2);
     sodium_free(key);
@@ -135,7 +144,65 @@ encode_cleanup:
 }
 
 int decode(char *filename) {
-    ERROR("not implemented\n");
-    return -1;
+    int result = 0;
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        ERROR("Cannot open %s: %s", filename, strerror(errno));
+        return -1;
+    }
+
+    unsigned char salt[crypto_pwhash_SALTBYTES];
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    unsigned char *pw = (unsigned char *)sodium_malloc(PW_LEN);
+    unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
+    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_LEN);
+    unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_LEN);
+    
+    if (fread(salt, sizeof(salt), 1, file) < 0) {
+        ERROR("cannot read container\n");
+        result = -1;
+        goto decode_cleanup;
+    }
+    if (fread(nonce, sizeof(nonce), 1, file) < 0) {
+        ERROR("cannot read container\n");
+        result = -1;
+        goto decode_cleanup;
+    }
+    if (fread(ciphertext, CIPHER_LEN, 1, file) < 0) {
+        ERROR("cannot read container\n");
+        result = -1;
+        goto decode_cleanup;
+    }
+
+    readpassphrase("Password: ", (char *)pw, PW_LEN, 0);
+    if(crypto_pwhash(key, crypto_secretbox_KEYBYTES, (char *)pw, PW_LEN, salt, 
+            crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE, crypto_pwhash_ALG_DEFAULT) != 0) {
+        ERROR("Key derivation failed\n");
+        result = -1;
+        goto decode_cleanup;
+    }
+
+    if(crypto_secretbox_open_easy(msg, ciphertext, CIPHER_LEN, nonce, key) != 0) {
+        ERROR("Cannot decode container\n");
+        result = -1;
+        goto decode_cleanup;
+    };
+
+    int i = 0;
+    for (i = 0; i < STORAGE_LEN; i++) {
+        printf("%x ", msg[i]);
+    }
+    printf("\n");
+
+decode_cleanup:
+    sodium_memzero(pw, PW_LEN);
+    sodium_memzero(msg, STORAGE_LEN);
+    sodium_memzero(key, crypto_secretbox_KEYBYTES);
+    sodium_free(pw);
+    sodium_free(key);
+    sodium_free(msg);
+    sodium_free(ciphertext);
+
+    return result;
 }
 
