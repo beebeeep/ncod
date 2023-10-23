@@ -6,24 +6,62 @@
 #include <unistd.h>
 
 #include "misc.h"
+#include "ncod.h"
 
-#define MOD_ENCODE 1
-#define MOD_DECODE 2
-#define STORAGE_LEN 64
-#define CIPHER_LEN (STORAGE_LEN + crypto_secretbox_MACBYTES)
-#define ID_LEN 32
-#define USER_LEN 64
-#define SECRET_LEN 512
+int main(int argc, char *argv[]) {
+    if (sodium_init() != 0) {
+        ERROR("failed to initialize libsodium\n");
+        return -1;
+    }
 
-int encode(char *filename);
-int decode(char *filename);
+    int ch;
+    char *filename = "ncod.db";
+    enum { NONE, GET, STORE, INIT } action = NONE;
+    while ((ch = getopt(argc, argv, "is:g:f:")) != -1) {
+        switch (ch) {
+        case 'i':
+            action = INIT;
+            break;
+        case 's':
+            action = STORE;
+            break;
+        case 'g':
+            action = GET;
+            break;
+        case 'f':
+            filename = optarg;
+            break;
+        case '?':
+        default:
+            usage();
+            return -1;
+        }
+    }
 
-typedef struct {
-    time_t last_updated;
-    char id[ID_LEN];
-    char user[USER_LEN];
-    char secret[SECRET_LEN];
-} secretRecord;
+    switch (action) {
+    case GET:
+        return get_secret(filename);
+        break;
+    case STORE:
+        return store_secret(filename);
+        break;
+    case INIT:
+        return init_storage(filename);
+        break;
+    default:
+        usage();
+        return -1;
+    }
+
+    return 0;
+}
+
+void usage() {
+    ERROR("Usage:\n"
+          "ncod -i [-f FILE]\t\tInit secret storage\n"
+          "ncod -g ID [ -f FILE]\t\tGet secret\n"
+          "ncod -s ID [ -f FILE]\t\tStore secret\n");
+}
 
 void dump(unsigned char *d, size_t l) {
     for (size_t i = 0; i < l; i++) {
@@ -37,104 +75,123 @@ void dump(unsigned char *d, size_t l) {
     printf("\n");
 }
 
-int main(int argc, char *argv[]) {
-    if (sodium_init() != 0) {
-        ERROR("failed to initialize libsodium\n");
-        return -1;
-    }
-
-    int ch;
-    while ((ch = getopt(argc, argv, "ied")) != -1) {
-        switch (ch) {
-        case 'e':
-            return encode(argv[optind]);
-            break;
-        case 'd':
-            return decode(argv[optind]);
-            break;
-        case '?':
-        default:
-            ERROR("Usage:\nncod -e FILE\t\tEncode stdin to file\nncod -d "
-                  "FILE\t\tDecode file to stdin\n");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-int encode(char *filename) {
+int init_storage(char *filename) {
     int result = 0;
-    unsigned char *pw1 = (unsigned char *)sodium_malloc(PW_LEN);
-    unsigned char *pw2 = (unsigned char *)sodium_malloc(PW_LEN);
     unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
-    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_LEN);
-    unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_LEN);
+    unsigned char *storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
     unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
 
-    if (pw1 == NULL || pw2 == NULL || key == NULL || ciphertext == NULL || msg == NULL) {
+    if (key == NULL || storage == NULL) {
         ERROR("cannot allocate memory\n");
+        return -1;
     }
 
     if (derive_key(key, salt, nonce, NULL, 1) != 0) {
         ERROR("cannot read password\n");
         result = -1;
-        goto encode_cleanup;
+        goto init_cleanup;
     }
 
-    FILE *file = fopen(filename, "wb");
-    if (file == NULL) {
-        ERROR("Cannot open %s: %s", filename, strerror(errno));
-        result = -1;
-        goto encode_cleanup;
+    sodium_memzero(storage, STORAGE_LEN);
+    result = save_storage(filename, salt, nonce, key, storage);
+    if (result == 0) {
+        printf("Initialized secret storage in %s\n", filename);
     }
 
-    // write header
-    if (fwrite(salt, sizeof(salt), 1, file) < 0) {
-        ERROR("Cannot write to %s", filename);
-        result = -1;
-        goto encode_cleanup;
-    }
-    if (fwrite(nonce, sizeof(nonce), 1, file) < 0) {
-        ERROR("Cannot write to %s", filename);
-        result = -1;
-        goto encode_cleanup;
-    }
-
-    // read input, encode it and write to the file
-    if (fread(msg, STORAGE_LEN, 1, stdin) < 1) {
-        ERROR("cannot read input\n");
-        result = -1;
-        goto encode_cleanup;
-    }
-    crypto_secretbox_easy(ciphertext, msg, STORAGE_LEN, nonce, key);
-    if (fwrite(ciphertext, CIPHER_LEN, 1, file) < 0) {
-        ERROR("Cannot write to %s", filename);
-        result = -1;
-        goto encode_cleanup;
-    }
-    if (fclose(file) != 0) {
-        ERROR("Cannot close file: %s", strerror(errno));
-        result = -1;
-        goto encode_cleanup;
-    }
-
-encode_cleanup:
-    sodium_memzero(pw1, PW_LEN);
-    sodium_memzero(pw2, PW_LEN);
-    sodium_memzero(msg, STORAGE_LEN);
+init_cleanup:
+    sodium_memzero(storage, STORAGE_BYTES);
     sodium_memzero(key, crypto_secretbox_KEYBYTES);
-    sodium_free(pw1);
-    sodium_free(pw2);
     sodium_free(key);
-    sodium_free(msg);
-    sodium_free(ciphertext);
+    sodium_free(storage);
 
     return result;
 }
 
-int decode(char *filename) {
+int store_secret(char *filename) {
+    int result = 0;
+    unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
+    unsigned char *storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
+    unsigned char salt[crypto_pwhash_SALTBYTES];
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+
+    if (key == NULL || storage == NULL) {
+        ERROR("cannot allocate memory\n");
+        return -1;
+    }
+    FILE *file = fopen(filename, "r+b");
+    if (file == NULL) {
+        ERROR("Cannot open %s: %s", filename, strerror(errno));
+        return -1;
+    }
+
+    if (derive_key(key, salt, nonce, file, 0) != 0) {
+        ERROR("cannot read password\n");
+        result = -1;
+        goto store_cleanup;
+    }
+
+    if (crypto_secretbox_open_easy(storage, ciphertext, CIPHER_BYTES, nonce, key) != 0) {
+        ERROR("Cannot decode container\n");
+        result = -1;
+        goto decode_cleanup;
+    };
+
+    sodium_memzero(storage, STORAGE_LEN);
+    result = save_storage(filename, salt, nonce, key, storage);
+    if (result == 0) {
+        printf("Initialized secret storage in %s\n", filename);
+    }
+
+store_cleanup:
+    sodium_memzero(storage, STORAGE_BYTES);
+    sodium_memzero(key, crypto_secretbox_KEYBYTES);
+    sodium_free(key);
+    sodium_free(storage);
+
+    return result;
+}
+
+int save_storage(unsigned char *filename, unsigned char *salt, unsigned char *nonce, unsigned char *key,
+                 unsigned char *storage) {
+    int result = 0;
+    FILE *file = fopen(filename, "wb");
+    if (file == NULL) {
+        ERROR("Cannot open %s: %s", filename, strerror(errno));
+        return -1;
+    }
+    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_BYTES);
+    if (ciphertext == NULL) {
+        ERROR("cannot allocate memory\n");
+        return -1;
+    }
+    // write header
+    if (fwrite(salt, sizeof(salt), 1, file) != 1) {
+        ERROR("Cannot write to %s", filename);
+        result = -1;
+        goto save_cleanup;
+    }
+    if (fwrite(nonce, sizeof(nonce), 1, file) != 1) {
+        ERROR("Cannot write to %s", filename);
+        result = -1;
+        goto save_cleanup;
+    }
+    crypto_secretbox_easy(ciphertext, storage, STORAGE_BYTES, nonce, key);
+    if (fwrite(ciphertext, CIPHER_BYTES, 1, file) != 1) {
+        ERROR("Cannot write to %s", filename);
+        result = -1;
+        goto save_cleanup;
+    }
+save_cleanup:
+    if (fclose(file) != 0) {
+        ERROR("Cannot close file: %s", strerror(errno));
+        result = -1;
+    }
+    sodium_free(ciphertext);
+    return result;
+}
+
+int get_secret(char *filename) {
     int result = 0;
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
@@ -144,34 +201,36 @@ int decode(char *filename) {
 
     unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char nonce[crypto_secretbox_NONCEBYTES];
-    unsigned char *pw = (unsigned char *)sodium_malloc(PW_LEN);
     unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
-    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_LEN);
-    unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_LEN);
+    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_BYTES);
+    unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_BYTES);
+    if (key == NULL || ciphertext == NULL || msg == NULL) {
+        ERROR("cannot allocate memory\n");
+        return -1;
+    }
+
     if (derive_key(key, salt, nonce, file, 0) != 0) {
         ERROR("cannot read password\n");
         result = -1;
         goto decode_cleanup;
     }
-    if (fread(ciphertext, CIPHER_LEN, 1, file) < 0) {
+    if (fread(ciphertext, CIPHER_BYTES, 1, file) < 0) {
         ERROR("cannot read container\n");
         result = -1;
         goto decode_cleanup;
     }
 
-    if (crypto_secretbox_open_easy(msg, ciphertext, CIPHER_LEN, nonce, key) != 0) {
+    if (crypto_secretbox_open_easy(msg, ciphertext, CIPHER_BYTES, nonce, key) != 0) {
         ERROR("Cannot decode container\n");
         result = -1;
         goto decode_cleanup;
     };
 
-    dump(msg, STORAGE_LEN);
+    dump(msg, STORAGE_BYTES);
 
 decode_cleanup:
-    sodium_memzero(pw, PW_LEN);
-    sodium_memzero(msg, STORAGE_LEN);
+    sodium_memzero(msg, STORAGE_BYTES);
     sodium_memzero(key, crypto_secretbox_KEYBYTES);
-    sodium_free(pw);
     sodium_free(key);
     sodium_free(msg);
     sodium_free(ciphertext);
