@@ -5,7 +5,7 @@ The main intention of the project is to create a password manager under 1K lines
 Apart from that, the only other notable feature is that secret storage file of fixed size (around 610K) that can only store 1000 secrets (you can tune this value by changing STORAGE_LEN macro). The only reason for that is weird flex of hiding how much passwords you are storing and whether you do this at all (so you, essentially, can neither confirm nor deny you have passwords there). 
 
 # Installation
-The only dependency is [libsodium](https://doc.libsodium.org/)
+The only dependency is [libsodium](https://doc.libsodium.org/). Linux folks will also require libbsd. 
 Just run `make` and copy `ncod` binary wherever you prefer.
 
 # Usage

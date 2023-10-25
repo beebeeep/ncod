@@ -7,6 +7,7 @@ CFLAGS := $(CFLAGS)  $(shell pkg-config --cflags libsodium)
 
 ifeq ($(OS),Linux)
 	CFLAGS := $(CFLAGS) -D LINUX
+	LDFLAGS := $(LDFLAGS) -lbsd
 endif
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))

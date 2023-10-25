@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     }
 
     int ch;
-    strncpy(filename, "ncod.db", 256);
+    snprintf(filename, 256, "%s/.ncod.db", getenv("HOME"));
     char secret_id[ID_LEN];
     enum { NONE, GET, STORE, INIT } action = NONE;
     while ((ch = getopt(argc, argv, "is:g:f:")) != -1) {
@@ -167,6 +167,7 @@ int read_password(int attempts) {
 // init_storage initializes empty secret storage
 // file will be overwritten
 int init_storage(char *filename) {
+    printf("Initializing secret storage in %s\n", filename);
     if (derive_key(NULL, 1) != 0) {
         ERROR("cannot read password\n");
         return -1;
@@ -174,7 +175,7 @@ int init_storage(char *filename) {
 
     sodium_memzero(storage, STORAGE_LEN);
     if (save_storage(filename) == 0) {
-        printf("Initialized secret storage in %s\n", filename);
+        printf("Storage initialized.\n");
         return 0;
     }
     ERROR("failed to initialize secret storage in %s\n", filename);
@@ -253,7 +254,7 @@ int store_secret(char *secret_id, char *filename) {
 int read_storage(char *filename) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
-        ERROR("Cannot open %s: %s", filename, strerror(errno));
+        ERROR("Cannot open %s: %s\n", filename, strerror(errno));
         return -1;
     }
 
@@ -273,7 +274,7 @@ int read_storage(char *filename) {
     }
 
     if (fclose(file) != 0) {
-        ERROR("Cannot close file: %s", strerror(errno));
+        ERROR("Cannot close file: %s\n", strerror(errno));
         return -1;
     }
     return 0;
@@ -289,7 +290,7 @@ int save_storage(char *filename) {
 
     FILE *file = fopen(filename, "wb");
     if (file == NULL) {
-        ERROR("Cannot open %s: %s", filename, strerror(errno));
+        ERROR("Cannot open %s: %s\n", filename, strerror(errno));
         return -1;
     }
 
@@ -314,7 +315,7 @@ int save_storage(char *filename) {
     }
 
     if (fclose(file) != 0) {
-        ERROR("Cannot close file: %s", strerror(errno));
+        ERROR("Cannot close file: %s\n", strerror(errno));
         return -1;
     }
     return 0;
