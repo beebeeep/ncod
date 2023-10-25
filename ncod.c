@@ -96,18 +96,6 @@ void usage() {
           "ncod -s ID [ -f FILE]\t\tStore secret\n");
 }
 
-void dump(unsigned char *d, size_t l) {
-    for (size_t i = 0; i < l; i++) {
-        printf("%x ", d[i]);
-        if (i != 0 && i % 16 == 15) {
-            printf("\n");
-        } else if (i != 0 && i % 16 == 7) {
-            printf(" ");
-        }
-    }
-    printf("\n");
-}
-
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
 // writes results to globals "key", "nonce", "salt"
 // if container file is not NULL, password salt and encryption nonce will be read from file, otherwise - generated

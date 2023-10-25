@@ -40,7 +40,6 @@ int init_storage(char *filename);
 int read_password(int attempts);
 int read_storage(char *filename);
 int save_storage(char *filename);
-void dump(unsigned char *d, size_t l);
 void usage();
 
 #endif
