@@ -9,6 +9,10 @@ ifeq ($(OS),Linux)
 	CFLAGS := $(CFLAGS) -D LINUX
 	LDFLAGS := $(LDFLAGS) -lbsd
 endif
+ifeq ($(OS),OpenBSD)
+	CFLAGS := $(CFLAGS) -D OPENBSD
+endif
+
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)

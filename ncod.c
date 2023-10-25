@@ -6,7 +6,11 @@
 #include <sodium.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef OPENBSD
+#include <errno.h>
+#else
 #include <sys/errno.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 
