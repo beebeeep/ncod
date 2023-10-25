@@ -1,8 +1,9 @@
 TARGET=ncod
-LDFLAGS=$(shell pkg-config --libs libsodium)
+LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libsodium)
 CC=clang
 LD=clang
-CFLAGS=-Wall -g -Werror $(shell pkg-config --cflags libsodium)
+CFLAGS ?= -Wall -Werror
+CFLAGS := $(CFLAGS)  $(shell pkg-config --cflags libsodium)
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)

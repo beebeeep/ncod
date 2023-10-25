@@ -37,6 +37,9 @@ int derive_key(FILE *container, int confirm_pw);
 int store_secret(char *secret_id, char *filename);
 int get_secret(char *secret_id, char *filename);
 int init_storage(char *filename);
+int read_password(int attempts);
+int read_storage(char *filename);
+int save_storage(char *filename);
 void dump(unsigned char *d, size_t l);
 void usage();
 

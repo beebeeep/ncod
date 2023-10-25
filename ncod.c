@@ -18,13 +18,14 @@ int main(int argc, char *argv[]) {
     storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
     pw = (unsigned char *)sodium_malloc(SECRET_LEN);
     pw2 = (unsigned char *)sodium_malloc(SECRET_LEN);
-    if (key == NULL || storage == NULL || pw == NULL || pw2 == NULL) {
+    char *filename = malloc(256);
+    if (key == NULL || storage == NULL || pw == NULL || pw2 == NULL || filename == NULL) {
         ERROR("cannot allocate memory\n");
         return -1;
     }
 
     int ch;
-    char *filename = "ncod.db";
+    strncpy(filename, "ncod.db", 256);
     char secret_id[ID_LEN];
     enum { NONE, GET, STORE, INIT } action = NONE;
     while ((ch = getopt(argc, argv, "is:g:f:")) != -1) {
@@ -41,7 +42,7 @@ int main(int argc, char *argv[]) {
             strncpy(secret_id, optarg, ID_LEN);
             break;
         case 'f':
-            filename = (char *)malloc(strlen(optarg));
+            filename = (char *)realloc(filename, strlen(optarg));
             if (filename == NULL) {
                 ERROR("cannot allocate memory\n");
                 return -1;
@@ -55,22 +56,33 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    int result;
     switch (action) {
     case GET:
-        return get_secret(secret_id, filename);
+        result = get_secret(secret_id, filename);
         break;
     case STORE:
-        return store_secret(secret_id, filename);
+        result = store_secret(secret_id, filename);
         break;
     case INIT:
-        return init_storage(filename);
+        result = init_storage(filename);
         break;
     default:
         usage();
-        return -1;
+        result = -1;
     }
 
-    return 0;
+    // securely erase all secret data and free the memory
+    sodium_memzero(pw, SECRET_LEN);
+    sodium_memzero(pw2, SECRET_LEN);
+    sodium_memzero(storage, STORAGE_BYTES);
+    sodium_memzero(key, crypto_secretbox_KEYBYTES);
+    sodium_free(pw);
+    sodium_free(pw2);
+    sodium_free(storage);
+    sodium_free(key);
+
+    return result;
 }
 
 void usage() {
@@ -93,7 +105,7 @@ void dump(unsigned char *d, size_t l) {
 }
 
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
-// writes results to provided pre-allocated buffers
+// writes results to globals "key", "nonce", "salt"
 // if container file is not NULL, password salt and encryption nonce will be read from file, otherwise - generated
 // if confirm_pw is non-zero, password will be asked twice
 int derive_key(FILE *container, int confirm_pw) {
@@ -123,6 +135,8 @@ int derive_key(FILE *container, int confirm_pw) {
     return 0;
 }
 
+// read_password reads password from user
+// if attempts > 1 then it asks user to repeat the password, giving them several attempts
 int read_password(int attempts) {
     int result = -1;
     sodium_memzero(pw, SECRET_LEN);
@@ -146,6 +160,8 @@ int read_password(int attempts) {
     return result;
 }
 
+// init_storage initializes empty secret storage
+// file will be overwritten
 int init_storage(char *filename) {
     if (derive_key(NULL, 1) != 0) {
         ERROR("cannot read password\n");
@@ -161,6 +177,30 @@ int init_storage(char *filename) {
     return -1;
 }
 
+// get_secret finds secret by its ID and prints it to stdout
+int get_secret(char *secret_id, char *filename) {
+    if (read_storage(filename) != 0) {
+        ERROR("Cannot read storage\n");
+        return -1;
+    }
+
+    secretRecord *secrets = (secretRecord *)storage;
+    int idx = -1;
+    for (int i = 0; i < STORAGE_LEN; i++) {
+        if (strncmp(secret_id, secrets[i].id, ID_LEN) == 0) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx == -1) {
+        ERROR("secret not found");
+        return -1;
+    }
+    printf("User: %s\nPassword: %s\n", secrets[idx].user, secrets[idx].secret);
+    return 0;
+}
+
+// store_secret asks for username and password and saves them into free cell in storage
 int store_secret(char *secret_id, char *filename) {
     if (read_storage(filename) != 0) {
         ERROR("Cannot read storage\n");
@@ -171,7 +211,7 @@ int store_secret(char *secret_id, char *filename) {
     secretRecord *secrets = (secretRecord *)storage;
     int idx = -1;
     for (int i = 0; i < STORAGE_LEN; i++) {
-        if (secrets[i].id[0] = '\0') {
+        if (secrets[i].id[0] == '\0') {
             idx = i;
             break;
         }
@@ -198,13 +238,15 @@ int store_secret(char *secret_id, char *filename) {
 
     strncpy(secrets[idx].id, secret_id, ID_LEN);
     strncpy(secrets[idx].user, user, USER_LEN);
-    strncpy(secrets[idx].secret, pw, SECRET_LEN);
+    strncpy(secrets[idx].secret, (char *)pw, SECRET_LEN);
     secrets[idx].last_updated = time(NULL);
 
     return save_storage(filename);
 }
 
-int read_storage(unsigned char *filename) {
+// read storage decrypts the storage contents from file
+// storage contents will be in "storage" variable, also it sets "key" and "salt" variables
+int read_storage(char *filename) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
         ERROR("Cannot open %s: %s", filename, strerror(errno));
@@ -233,7 +275,9 @@ int read_storage(unsigned char *filename) {
     return 0;
 }
 
-int save_storage(unsigned char *filename) {
+// save_storage encrypts contents of "storage" variable using the key in "key" variable
+// encryption nonce from "nonce" is regenerated, password salt in "salt" is reused
+int save_storage(char *filename) {
     if (key == NULL) {
         ERROR("Storage is not opened");
         return -1;
@@ -270,34 +314,4 @@ int save_storage(unsigned char *filename) {
         return -1;
     }
     return 0;
-}
-
-int get_secret(char *secret_id, char *filename) {
-    int result = 0;
-    FILE *file = fopen(filename, "rb");
-    if (file == NULL) {
-        ERROR("Cannot open %s: %s", filename, strerror(errno));
-        return -1;
-    }
-
-    unsigned char salt[crypto_pwhash_SALTBYTES];
-    unsigned char nonce[crypto_secretbox_NONCEBYTES];
-    unsigned char *key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
-    unsigned char *ciphertext = (unsigned char *)sodium_malloc(CIPHER_BYTES);
-    unsigned char *msg = (unsigned char *)sodium_malloc(STORAGE_BYTES);
-    if (key == NULL || ciphertext == NULL || msg == NULL) {
-        ERROR("cannot allocate memory\n");
-        return -1;
-    }
-
-    dump(msg, STORAGE_BYTES);
-
-decode_cleanup:
-    sodium_memzero(msg, STORAGE_BYTES);
-    sodium_memzero(key, crypto_secretbox_KEYBYTES);
-    sodium_free(key);
-    sodium_free(msg);
-    sodium_free(ciphertext);
-
-    return result;
 }

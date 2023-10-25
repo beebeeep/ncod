@@ -1,1 +1,15 @@
-I can neither confirm nor deny this is a password manager
+I can neither confirm nor deny this is a password manager, a very minimalistic one.
+
+The main intention of the project is to create a password manager under 1K lines of (pretty simple) code, so anyone caring enough can take a look into its sources and confirm it's not doing anything fishy/stupid/too complicated. Due to this requirement, the functionality is, and probably will be, is minimal: it only can store and get passwords from encrypted file. It doesn't do cloud synchronization, neither it has mobile app.
+
+Apart from that, the only other notable feature is that secret storage file of fixed size (around 610K) that can only store 1000 secrets (you can tune this value by changing STORAGE_LEN macro). The only reason for that is weird flex of hiding how much passwords you are storing and whether you do this at all (so you, essentially, can neither confirm nor deny you have passwords there). 
+
+# Installation
+The only dependency is [libsodium](https://doc.libsodium.org/)
+Just run `make` and copy `ncod` binary wherever you prefer.
+
+# Usage
+
+1. Init the storage: `ncod -i [-f FILE]`
+2. Store the secret: `ncod -s SECRET_ID [-f FILE]`
+3. Get the secret: `ncod -g SECRET_ID [-f FILE]` 
