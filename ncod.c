@@ -228,6 +228,7 @@ int store_secret(char *secret_id, char *filename) {
 
     char *user = malloc(USER_LEN);
     size_t userlen = USER_LEN;
+    printf("Username: ");
     if (getline(&user, &userlen, stdin) == -1) {
         ERROR("cannot get username\n");
         return -1;
