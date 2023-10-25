@@ -286,7 +286,7 @@ int save_storage(char *filename) {
     size_t tmp_sz = strlen(filename) + 6;
     char *tmp_filename = (char *)malloc(tmp_sz + 1);
     strncpy(tmp_filename, filename, tmp_sz);
-    strcat(tmp_filename, "XXXXXX");
+    strncat(tmp_filename, "XXXXXX", tmp_sz);
 
     int filedes = mkstemp(tmp_filename);
     if (filedes < 0) {
