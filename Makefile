@@ -11,13 +11,13 @@ ifeq ($(OS),Linux)
 	LDFLAGS := $(LDFLAGS) -lbsd
 	DESTDIR ?= /usr/bin
 	MANDIR ?= /usr/share/man
+else ifeq ($(OS),OpenBSD)
+	CFLAGS := $(CFLAGS) -D OPENBSD
+	DESTDIR ?= /usr/local/bin
+	MANDIR ?= /usr/local/man
 else
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/share/man
-endif
-ifeq ($(OS),OpenBSD)
-	CFLAGS := $(CFLAGS) -D OPENBSD
-	MANDIR ?= /usr/local/man
 endif
 
 
