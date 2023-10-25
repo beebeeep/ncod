@@ -7,15 +7,15 @@
 
 .Sh SYNOPSIS
 .Nm ncad
-.Fl i | g | s
+.Fl i | g | s | l
 .Op Ar secret_id
-.Op Fl f Ar file 
+.Op Fl f Ar file
 
 .Sh DESCRIPTION
 The
 .Nm
 is a utility for storing usernames and password in encrypted file.
-It us meant to be as simple as possible while providing 
+It us meant to be as simple as possible while providing
 the bare minimum of functionality.
 
 Usage:
@@ -25,8 +25,11 @@ Initialize secure storage
 .It Fl g Ar secret_id
 Get secret from storage
 .It Fl s Ar secret_id
-Put secret to storage (you will be prompted for username and password).
+Put secret to storage (you will be prompted for username and password)
+.It Fl l
+List all secrets in storage (only IDs and usernames)
 .El
+
 You can also specify file to use for storage using
 .Fl f Ar file
 

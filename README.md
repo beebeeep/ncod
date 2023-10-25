@@ -19,3 +19,4 @@ Default install location is `/usr/bin` in Linux and `/usr/local/bin` in BSDs.
 1. Init the storage: `ncod -i [-f FILE]`
 2. Store the secret: `ncod -s SECRET_ID [-f FILE]`
 3. Get the secret: `ncod -g SECRET_ID [-f FILE]` 
+4. List secrets: `ncod -l [-f FILE]`

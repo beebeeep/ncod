@@ -18,28 +18,30 @@
 
 int main(int argc, char *argv[]) {
     if (sodium_init() != 0) {
-        ERROR("failed to initialize libsodium\n");
+        ERROR("Failed to initialize libsodium\n");
         return -1;
     }
-
     key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
     storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
     pw = (unsigned char *)sodium_malloc(SECRET_LEN);
     pw2 = (unsigned char *)sodium_malloc(SECRET_LEN);
     char *filename = malloc(256);
     if (key == NULL || storage == NULL || pw == NULL || pw2 == NULL || filename == NULL) {
-        ERROR("cannot allocate memory\n");
+        ERROR("Cannot allocate memory\n");
         return -1;
     }
 
     int ch;
     snprintf(filename, 256, "%s/.ncod.db", getenv("HOME"));
     char secret_id[ID_LEN];
-    enum { NONE, GET, STORE, INIT } action = NONE;
-    while ((ch = getopt(argc, argv, "is:g:f:")) != -1) {
+    enum { NONE, GET, STORE, LIST, INIT } action = NONE;
+    while ((ch = getopt(argc, argv, "ils:g:f:")) != -1) {
         switch (ch) {
         case 'i':
             action = INIT;
+            break;
+        case 'l':
+            action = LIST;
             break;
         case 's':
             action = STORE;
@@ -52,7 +54,7 @@ int main(int argc, char *argv[]) {
         case 'f':
             filename = (char *)realloc(filename, strlen(optarg));
             if (filename == NULL) {
-                ERROR("cannot allocate memory\n");
+                ERROR("Cannot allocate memory\n");
                 return -1;
             }
             strncpy(filename, optarg, strlen(optarg));
@@ -74,6 +76,9 @@ int main(int argc, char *argv[]) {
         break;
     case INIT:
         result = init_storage(filename);
+        break;
+    case LIST:
+        result = list_secrets(filename);
         break;
     default:
         usage();
@@ -97,7 +102,8 @@ void usage() {
     ERROR("Usage:\n"
           "ncod -i [-f FILE]\t\tInit secret storage\n"
           "ncod -g ID [ -f FILE]\t\tGet secret\n"
-          "ncod -s ID [ -f FILE]\t\tStore secret\n");
+          "ncod -s ID [ -f FILE]\t\tStore secret\n"
+          "ncod -l [ -f FILE]\t\tList all secrets\n");
 }
 
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
@@ -105,7 +111,9 @@ void usage() {
 // if container file is not NULL, password salt and encryption nonce will be read from file, otherwise - generated
 // if confirm_pw is non-zero, password will be asked twice
 int derive_key(FILE *container, int confirm_pw) {
-    read_password(confirm_pw ? 3 : 1);
+    if (read_password(confirm_pw ? 3 : 1) != 0) {
+        return -1;
+    }
 
     if (container == NULL) {
         randombytes_buf(salt, crypto_pwhash_SALTBYTES);
@@ -113,11 +121,11 @@ int derive_key(FILE *container, int confirm_pw) {
     } else {
         fseek(container, 0, SEEK_SET);
         if (fread(salt, crypto_pwhash_SALTBYTES, 1, container) != 1) {
-            ERROR("cannot read container\n");
+            ERROR("Cannot read container\n");
             return -1;
         }
         if (fread(nonce, crypto_secretbox_NONCEBYTES, 1, container) != 1) {
-            ERROR("cannot read container\n");
+            ERROR("Cannot read container\n");
             return -1;
         }
     }
@@ -143,9 +151,13 @@ int read_password(int attempts) {
         if (attempts == 1) {
             return 0;
         }
+        if (strlen((char *)pw) == 0) {
+            ERROR("Empty password?\n");
+            continue;
+        }
         readpassphrase("Repeat password: ", (char *)pw2, SECRET_LEN, 0);
         if (strncmp((char *)pw, (char *)pw2, SECRET_LEN) != 0) {
-            ERROR("password does not match, try again\n");
+            ERROR("Passwords do not match, try again\n");
         } else {
             result = 0;
             break;
@@ -161,16 +173,16 @@ int read_password(int attempts) {
 int init_storage(char *filename) {
     printf("Initializing secret storage in %s\n", filename);
     if (derive_key(NULL, 1) != 0) {
-        ERROR("cannot read password\n");
+        ERROR("Cannot read password\n");
         return -1;
     }
 
-    sodium_memzero(storage, STORAGE_LEN);
+    sodium_memzero(storage, STORAGE_BYTES);
     if (save_storage(filename) == 0) {
         printf("Storage initialized.\n");
         return 0;
     }
-    ERROR("failed to initialize secret storage in %s\n", filename);
+    ERROR("Failed to initialize secret storage in %s\n", filename);
     return -1;
 }
 
@@ -190,10 +202,28 @@ int get_secret(char *secret_id, char *filename) {
         }
     }
     if (idx == -1) {
-        ERROR("secret not found");
+        ERROR("Secret not found");
         return -1;
     }
     printf("User: %s\nPassword: %s\n", secrets[idx].user, secrets[idx].secret);
+    return 0;
+}
+
+// list_secrets prints all secrets (only IDs and usernames) in storage
+int list_secrets(char *filename) {
+    if (read_storage(filename) != 0) {
+        ERROR("Cannot read storage\n");
+        return -1;
+    }
+
+    secretRecord *secrets = (secretRecord *)storage;
+    for (int i = 0; i < STORAGE_LEN; i++) {
+        if (secrets[i].last_updated != 0) {
+            char updated[128];
+            strftime(updated, 128, "%F %T", localtime(&secrets[i].last_updated));
+            printf("ID: %s, user: %s, updated: %s\n", secrets[i].id, secrets[i].user, updated);
+        }
+    }
     return 0;
 }
 
@@ -214,24 +244,24 @@ int store_secret(char *secret_id, char *filename) {
         }
     }
     if (idx == -1) {
-        ERROR("no more space for secrets :(\n");
+        ERROR("No more space for secrets :(\n");
         return -1;
     }
 
     char *user = malloc(USER_LEN);
     size_t userlen = USER_LEN;
-    printf("Username: ");
+    printf("Enter username: ");
     if (getline(&user, &userlen, stdin) == -1) {
-        ERROR("cannot get username\n");
+        ERROR("Cannot get username\n");
         return -1;
     }
     user[strlen(user) - 1] = '\0';
     if (strlen(user) > USER_LEN) {
-        ERROR("too long username\n");
+        ERROR("Too long username\n");
         return -1;
     }
     if (read_password(3) != 0) {
-        ERROR("cannot get password\n");
+        ERROR("Cannot get password\n");
     }
 
     strncpy(secrets[idx].id, secret_id, ID_LEN);
@@ -252,11 +282,11 @@ int read_storage(char *filename) {
     }
 
     if (derive_key(file, 0) != 0) {
-        ERROR("cannot read password\n");
+        ERROR("Cannot read password\n");
         return -1;
     }
     if (fread(ciphertext, CIPHER_BYTES, 1, file) < 0) {
-        ERROR("cannot read container\n");
+        ERROR("Cannot read container\n");
         return -1;
     }
     fseek(file, sizeof(salt) + sizeof(nonce), SEEK_SET);
@@ -270,6 +300,7 @@ int read_storage(char *filename) {
         ERROR("Cannot close file: %s\n", strerror(errno));
         return -1;
     }
+
     return 0;
 }
 
