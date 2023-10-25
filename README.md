@@ -8,7 +8,11 @@ Apart from that, the only other notable feature is that secret storage file of f
 
 # Installation
 The only dependency is [libsodium](https://doc.libsodium.org/). Linux folks will also require libbsd. 
-Just run `make` and copy `ncod` binary wherever you prefer.
+```bash
+make
+make install    # specify DESTDIR to customize
+``` 
+Default install location is `/usr/bin` in Linux and `/usr/local/bin` in BSDs.
 
 # Usage
 

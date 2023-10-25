@@ -274,16 +274,23 @@ int read_storage(char *filename) {
 }
 
 // save_storage encrypts contents of "storage" variable using the key in "key" variable
-// encryption nonce from "nonce" is regenerated, password salt in "salt" is reused
+// encryption nonce from "nonce" is regenerated, password salt in "salt" is reused.
+// To prevent accidental corruption of storage, saves data to temporary file
+// and only then renames it to specified name
 int save_storage(char *filename) {
     if (key == NULL) {
         ERROR("Storage is not opened");
         return -1;
     }
 
-    FILE *file = fopen(filename, "wb");
-    if (file == NULL) {
-        ERROR("Cannot open %s: %s\n", filename, strerror(errno));
+    size_t tmp_sz = strlen(filename) + 6;
+    char *tmp_filename = (char *)malloc(tmp_sz + 1);
+    strncpy(tmp_filename, filename, tmp_sz);
+    strcat(tmp_filename, "XXXXXX");
+
+    int filedes = mkstemp(tmp_filename);
+    if (filedes < 0) {
+        ERROR("Cannot create temporary file: %s\n", strerror(errno));
         return -1;
     }
 
@@ -291,25 +298,30 @@ int save_storage(char *filename) {
     randombytes_buf(nonce, crypto_secretbox_NONCEBYTES);
 
     // write header
-    if (fwrite(salt, sizeof(salt), 1, file) != 1) {
-        ERROR("Cannot write to %s", filename);
+    if (write(filedes, salt, sizeof(salt)) < 0) {
+        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
-    if (fwrite(nonce, sizeof(nonce), 1, file) != 1) {
-        ERROR("Cannot write to %s", filename);
+    if (write(filedes, nonce, sizeof(nonce)) < 0) {
+        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
 
     // encode storage and write it to the file
     crypto_secretbox_easy(ciphertext, storage, STORAGE_BYTES, nonce, key);
-    if (fwrite(ciphertext, CIPHER_BYTES, 1, file) != 1) {
-        ERROR("Cannot write to %s", filename);
+    if (write(filedes, ciphertext, CIPHER_BYTES) < 0) {
+        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
 
-    if (fclose(file) != 0) {
-        ERROR("Cannot close file: %s\n", strerror(errno));
+    if (close(filedes) != 0) {
+        ERROR("Cannot close temporary file %s: %s\n", tmp_filename, strerror(errno));
         return -1;
     }
+    if (rename(tmp_filename, filename) != 0) {
+        ERROR("Cannot move temporary file %s to %s: %s\n", tmp_filename, filename, strerror(errno));
+        return -1;
+    }
+    free(tmp_filename);
     return 0;
 }
