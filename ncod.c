@@ -1,4 +1,8 @@
+#ifdef LINUX
+#include <bsd/readpassphrase.h>
+#else
 #include <readpassphrase.h>
+#endif
 #include <sodium.h>
 #include <stdio.h>
 #include <string.h>
