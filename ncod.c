@@ -21,11 +21,14 @@ int main(int argc, char *argv[]) {
         ERROR("Failed to initialize libsodium\n");
         return -1;
     }
+
     key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
     storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
     pw = (unsigned char *)sodium_malloc(SECRET_LEN);
     pw2 = (unsigned char *)sodium_malloc(SECRET_LEN);
+    tmp_record = (secretRecord *)sodium_malloc(sizeof(secretRecord));
     char *filename = malloc(256);
+    FILE *import_file;
     if (key == NULL || storage == NULL || pw == NULL || pw2 == NULL || filename == NULL) {
         ERROR("Cannot allocate memory\n");
         return -1;
@@ -39,14 +42,25 @@ int main(int argc, char *argv[]) {
 #endif
 
     char secret_id[ID_LEN];
-    enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT } action = NONE;
-    while ((ch = getopt(argc, argv, "ils:g:u:d:f:")) != -1) {
+    enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT, EXPORT, IMPORT } action = NONE;
+    while ((ch = getopt(argc, argv, "ielm:s:g:u:d:f:")) != -1) {
         switch (ch) {
         case 'i':
             action = INIT;
             break;
         case 'l':
             action = LIST;
+            break;
+        case 'e':
+            action = EXPORT;
+            break;
+        case 'm':
+            action = IMPORT;
+            import_file = fopen(optarg, "r");
+            if (import_file == NULL) {
+                ERROR("Cannot open %s: %s", optarg, strerror(errno));
+                return -1;
+            }
             break;
         case 's':
             action = STORE;
@@ -99,6 +113,13 @@ int main(int argc, char *argv[]) {
     case LIST:
         result = list_secrets(filename);
         break;
+    case EXPORT:
+        result = export_secrets(filename);
+        break;
+    case IMPORT:
+        result = import_secrets(import_file, filename);
+        fclose(import_file);
+        break;
     default:
         usage();
         result = -1;
@@ -113,18 +134,21 @@ int main(int argc, char *argv[]) {
     sodium_free(pw2);
     sodium_free(storage);
     sodium_free(key);
+    sodium_free(tmp_record);
 
     return result;
 }
 
 void usage() {
     ERROR("Usage:\n"
-          "ncod -i [-f FILE]\t\tInit secret storage\n"
-          "ncod -g ID [ -f FILE]\t\tGet secret\n"
-          "ncod -s ID [ -f FILE]\t\tStore secret\n"
-          "ncod -u ID [ -f FILE]\t\tUpdate secret\n"
-          "ncod -d ID [ -f FILE]\t\tDelete secret\n"
-          "ncod -l [ -f FILE]\t\tList all secrets\n");
+          "ncod -i [-f FILE]\t\t\tInit secret storage\n"
+          "ncod -g ID [ -f FILE]\t\t\tGet secret\n"
+          "ncod -s ID [ -f FILE]\t\t\tStore secret\n"
+          "ncod -u ID [ -f FILE]\t\t\tUpdate secret\n"
+          "ncod -d ID [ -f FILE]\t\t\tDelete secret\n"
+          "ncod -l [ -f FILE]\t\t\tList all secrets\n"
+          "ncod -e [ -f FILE]\t\t\tExport all secrets\n"
+          "ncod -m SECRETS_FILE [ -f FILE]\t\tImport secrets\n");
 }
 
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
@@ -261,6 +285,64 @@ int list_secrets(char *filename) {
         }
     }
     return 0;
+}
+
+int export_secrets(char *filename) {
+    if (read_storage(filename) != 0) {
+        ERROR("Cannot read storage\n");
+        return -1;
+    }
+
+    secretRecord *secrets = (secretRecord *)storage;
+    for (int i = 0; i < STORAGE_LEN; i++) {
+        if (secrets[i].last_updated != 0) {
+            printf("%s %s %s\n", secrets[i].id, secrets[i].user, secrets[i].secret);
+        }
+    }
+    return 0;
+}
+
+// import_secrets reads secrets from src and writes them to the storage
+int import_secrets(FILE *src, char *filename) {
+    if (read_storage(filename) != 0) {
+        ERROR("Cannot read storage\n");
+        return -1;
+    }
+
+    int count = 0;
+    int n;
+    int lineno = 1;
+    for (;;) {
+        // XXX fscanf is treating his input format in a pretty creative mode
+        // so if anything is off with input line (wrong number of fields, incorrect length etc),
+        // if may not fail immediately and consume some garbage
+        n = fscanf(src, IMPORT_FMT, tmp_record->id, tmp_record->user, tmp_record->secret);
+        if (n == EOF) {
+            break;
+        }
+        if (n != 3) {
+            ERROR("Incorrect file format at line %d, stopping import\n", lineno);
+            break;
+        }
+        ERROR("Importing secret %s\n", tmp_record->id);
+        lineno++;
+        secretRecord *r = find_secret(tmp_record->id);
+        if (r == NULL) {
+            r = find_secret(NULL);
+        }
+        if (r == NULL) {
+            ERROR("Too many secrets, stopping import\n");
+            break;
+        }
+        count++;
+        strncpy(r->id, tmp_record->id, ID_LEN);
+        strncpy(r->user, tmp_record->user, USER_LEN);
+        strncpy(r->secret, tmp_record->secret, SECRET_LEN);
+        r->last_updated = time(NULL);
+    }
+    ERROR("Imported %d secrets\n", count);
+
+    return save_storage(filename);
 }
 
 // store_secret asks for username and password and saves them into free cell in storage

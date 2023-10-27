@@ -13,6 +13,7 @@
 #define ID_LEN 32
 #define USER_LEN 64
 #define SECRET_LEN 512
+#define IMPORT_FMT "%32s %64s %512s\n"
 
 typedef struct {
     time_t last_updated;
@@ -32,6 +33,7 @@ unsigned char *key;
 unsigned char *storage;
 unsigned char *pw;
 unsigned char *pw2;
+secretRecord *tmp_record;
 
 int derive_key(FILE *container, int confirm_pw);
 int store_secret(char *secret_id, char *filename, int overwrite);
@@ -42,6 +44,8 @@ int init_storage(char *filename);
 int read_password(char *prompt, int attempts);
 int read_storage(char *filename);
 int save_storage(char *filename);
+int export_secrets(char *filename);
+int import_secrets(FILE *src, char *filename);
 secretRecord *find_secret(char *secret_id);
 char *get_input(char *prompt);
 void usage();

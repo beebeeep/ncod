@@ -7,8 +7,15 @@
 
 .Sh SYNOPSIS
 .Nm ncad
-.Fl i | g | s | l | u | d
+.Fl g | s | l | u | d
 .Op Ar secret_id
+.Op Fl f Ar file
+.Nm ncad
+.Fl e
+.Op Fl f Ar file
+.Nm ncad
+.Fl m
+.Op Ar secrets_file
 .Op Fl f Ar file
 
 .Sh DESCRIPTION
@@ -32,6 +39,12 @@ Update secret in storage (you will be prompted for username and password)
 Delete secret from storage (you will be prompted for username and password)
 .It Fl l
 List all secrets in storage (only IDs and usernames)
+.It Fl e
+Export all secrets (will be written to stdout). Secrets are exported as simple string "<ID> <USER> <SECRET>", each secret on new line.
+.It Fl m Ar secrets_file
+Import secrets from file (same format as in
+.Fl e
+). Note that incorrectly formatted file may lead to some garbage imported.
 .El
 
 You can also specify file to use for storage using
