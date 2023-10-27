@@ -7,7 +7,7 @@
 
 .Sh SYNOPSIS
 .Nm ncad
-.Fl i | g | s | l
+.Fl i | g | s | l | u | d
 .Op Ar secret_id
 .Op Fl f Ar file
 
@@ -26,6 +26,10 @@ Initialize secure storage
 Get secret from storage
 .It Fl s Ar secret_id
 Put secret to storage (you will be prompted for username and password)
+.It Fl u Ar secret_id
+Update secret in storage (you will be prompted for username and password)
+.It Fl d Ar secret_id
+Delete secret from storage (you will be prompted for username and password)
 .It Fl l
 List all secrets in storage (only IDs and usernames)
 .El

@@ -6,6 +6,10 @@ INSTALL ?= install
 CFLAGS ?= -Wall -Werror
 CFLAGS := $(CFLAGS)  $(shell pkg-config --cflags libsodium)
 
+ifeq ($(DEBUG),on)
+	CFLAGS := $(CFLAGS) -g -D DEBUG
+endif
+
 ifeq ($(OS),Linux)
 	CFLAGS := $(CFLAGS) -D LINUX
 	LDFLAGS := $(LDFLAGS) -lbsd

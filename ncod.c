@@ -32,10 +32,15 @@ int main(int argc, char *argv[]) {
     }
 
     int ch;
+#ifdef DEBUG
+    snprintf(filename, 256, "./ncod.db");
+#else
     snprintf(filename, 256, "%s/.ncod.db", getenv("HOME"));
+#endif
+
     char secret_id[ID_LEN];
-    enum { NONE, GET, STORE, LIST, INIT } action = NONE;
-    while ((ch = getopt(argc, argv, "ils:g:f:")) != -1) {
+    enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT } action = NONE;
+    while ((ch = getopt(argc, argv, "ils:g:u:d:f:")) != -1) {
         switch (ch) {
         case 'i':
             action = INIT;
@@ -49,6 +54,14 @@ int main(int argc, char *argv[]) {
             break;
         case 'g':
             action = GET;
+            strncpy(secret_id, optarg, ID_LEN);
+            break;
+        case 'u':
+            action = UPDATE;
+            strncpy(secret_id, optarg, ID_LEN);
+            break;
+        case 'd':
+            action = DELETE;
             strncpy(secret_id, optarg, ID_LEN);
             break;
         case 'f':
@@ -72,7 +85,13 @@ int main(int argc, char *argv[]) {
         result = get_secret(secret_id, filename);
         break;
     case STORE:
-        result = store_secret(secret_id, filename);
+        result = store_secret(secret_id, filename, 0);
+        break;
+    case UPDATE:
+        result = store_secret(secret_id, filename, 1);
+        break;
+    case DELETE:
+        result = delete_secret(secret_id, filename);
         break;
     case INIT:
         result = init_storage(filename);
@@ -103,6 +122,8 @@ void usage() {
           "ncod -i [-f FILE]\t\tInit secret storage\n"
           "ncod -g ID [ -f FILE]\t\tGet secret\n"
           "ncod -s ID [ -f FILE]\t\tStore secret\n"
+          "ncod -u ID [ -f FILE]\t\tUpdate secret\n"
+          "ncod -d ID [ -f FILE]\t\tDelete secret\n"
           "ncod -l [ -f FILE]\t\tList all secrets\n");
 }
 
@@ -111,7 +132,7 @@ void usage() {
 // if container file is not NULL, password salt and encryption nonce will be read from file, otherwise - generated
 // if confirm_pw is non-zero, password will be asked twice
 int derive_key(FILE *container, int confirm_pw) {
-    if (read_password(confirm_pw ? 3 : 1) != 0) {
+    if (read_password("Storage password: ", confirm_pw ? 3 : 1) != 0) {
         return -1;
     }
 
@@ -141,13 +162,17 @@ int derive_key(FILE *container, int confirm_pw) {
 
 // read_password reads password from user
 // if attempts > 1 then it asks user to repeat the password, giving them several attempts
-int read_password(int attempts) {
+int read_password(char *prompt, int attempts) {
+#ifdef DEBUG
+    strncpy((char *)pw, "secret", 7);
+    return 0;
+#else
     int result = -1;
     sodium_memzero(pw, SECRET_LEN);
     sodium_memzero(pw2, SECRET_LEN);
 
     for (int i = 0; i < attempts; i++) {
-        readpassphrase("Password: ", (char *)pw, SECRET_LEN, 0);
+        readpassphrase(prompt, (char *)pw, SECRET_LEN, 0);
         if (attempts == 1) {
             return 0;
         }
@@ -166,12 +191,13 @@ int read_password(int attempts) {
 
     sodium_memzero(pw2, SECRET_LEN);
     return result;
+#endif
 }
 
 // init_storage initializes empty secret storage
 // file will be overwritten
 int init_storage(char *filename) {
-    printf("Initializing secret storage in %s\n", filename);
+    ERROR("Initializing secret storage in %s\n", filename);
     if (derive_key(NULL, 1) != 0) {
         ERROR("Cannot read password\n");
         return -1;
@@ -179,7 +205,6 @@ int init_storage(char *filename) {
 
     sodium_memzero(storage, STORAGE_BYTES);
     if (save_storage(filename) == 0) {
-        printf("Storage initialized.\n");
         return 0;
     }
     ERROR("Failed to initialize secret storage in %s\n", filename);
@@ -193,20 +218,31 @@ int get_secret(char *secret_id, char *filename) {
         return -1;
     }
 
-    secretRecord *secrets = (secretRecord *)storage;
-    int idx = -1;
-    for (int i = 0; i < STORAGE_LEN; i++) {
-        if (strncmp(secret_id, secrets[i].id, ID_LEN) == 0) {
-            idx = i;
-            break;
-        }
+    secretRecord *record = find_secret(secret_id);
+    if (record == NULL) {
+        ERROR("Secret not found\n");
+        return -1;
     }
-    if (idx == -1) {
+    printf("User: %s\nPassword: %s\n", record->user, record->secret);
+    return 0;
+}
+
+// delete secret find secret by ID and deletes it from storage
+int delete_secret(char *secret_id, char *filename) {
+    if (read_storage(filename) != 0) {
+        ERROR("Cannot read storage\n");
+        return -1;
+    }
+
+    secretRecord *record = find_secret(secret_id);
+    if (record == NULL) {
         ERROR("Secret not found");
         return -1;
     }
-    printf("User: %s\nPassword: %s\n", secrets[idx].user, secrets[idx].secret);
-    return 0;
+
+    memset(record, 0, sizeof(secretRecord));
+    ERROR("Secret \"%s\" was deleted\n", secret_id);
+    return save_storage(filename);
 }
 
 // list_secrets prints all secrets (only IDs and usernames) in storage
@@ -228,48 +264,114 @@ int list_secrets(char *filename) {
 }
 
 // store_secret asks for username and password and saves them into free cell in storage
-int store_secret(char *secret_id, char *filename) {
+// if there is secret with same ID, it will prompt user if they want to overwrite it, unless overwrite != 0
+int store_secret(char *secret_id, char *filename, int overwrite) {
     if (read_storage(filename) != 0) {
         ERROR("Cannot read storage\n");
         return -1;
     }
 
     // find next empty slot for storage
-    secretRecord *secrets = (secretRecord *)storage;
-    int idx = -1;
-    for (int i = 0; i < STORAGE_LEN; i++) {
-        if (secrets[i].id[0] == '\0') {
-            idx = i;
-            break;
+    secretRecord *existing = find_secret(secret_id);
+    secretRecord *vacant = find_secret(NULL);
+    secretRecord *record = NULL;
+    char *user_prompt = (char *)malloc(128);
+    snprintf(user_prompt, 128, "Enter username: ");
+
+    if (existing != NULL && overwrite) {
+        snprintf(user_prompt, 128, "Enter username (leave empty to keep \"%s\"): ", existing->user);
+        record = existing;
+    } else if (existing != NULL && !overwrite) {
+        char *ans = get_input("Secret already exists. Overwrite (y/n)? ");
+        if (ans != NULL && (ans[0] == 'y' || ans[0] == 'Y')) {
+            free(ans);
+            snprintf(user_prompt, 128, "Enter username (leave empty to keep \"%s\"): ", existing->user);
+            record = existing;
         }
+    } else if (existing == NULL && vacant != NULL) {
+        record = vacant;
+    } else {
+        ERROR("No more space for secrets :(\n)");
     }
-    if (idx == -1) {
-        ERROR("No more space for secrets :(\n");
+
+    if (record == NULL) {
+        ERROR("Password not stored.\n");
         return -1;
     }
 
-    char *user = malloc(USER_LEN);
-    size_t userlen = USER_LEN;
-    printf("Enter username: ");
-    if (getline(&user, &userlen, stdin) == -1) {
+    char *user = get_input(user_prompt);
+    if (user == NULL) {
         ERROR("Cannot get username\n");
         return -1;
     }
-    user[strlen(user) - 1] = '\0';
-    if (strlen(user) > USER_LEN) {
-        ERROR("Too long username\n");
+    if (strlen(user) == 0) {
+        if (existing != NULL) {
+            // updating secret, keep user
+            free(user);
+            user = NULL;
+        } else {
+            ERROR("Empty username?\n");
+            return -1;
+        }
+    }
+    if (user != NULL && strlen(user) > USER_LEN) {
+        ERROR("Too long username, max %d characters", USER_LEN);
         return -1;
     }
-    if (read_password(3) != 0) {
+
+    if (read_password("Password: ", 3) != 0) {
         ERROR("Cannot get password\n");
     }
 
-    strncpy(secrets[idx].id, secret_id, ID_LEN);
-    strncpy(secrets[idx].user, user, USER_LEN);
-    strncpy(secrets[idx].secret, (char *)pw, SECRET_LEN);
-    secrets[idx].last_updated = time(NULL);
+    strncpy(record->id, secret_id, ID_LEN);
+    if (user != NULL) {
+        strncpy(record->user, user, USER_LEN);
+        free(user);
+    }
+    strncpy(record->secret, (char *)pw, SECRET_LEN);
+    record->last_updated = time(NULL);
 
+    free(user_prompt);
     return save_storage(filename);
+}
+
+// get_input prompts user to enter something from stdin. Input will be echoed.
+// returns entered string (take care of freeing it) or NULL.
+char *get_input(char *prompt) {
+    char *result = malloc(USER_LEN);
+    if (result == NULL) {
+        ERROR("Cannot allocate memory.\n");
+        return NULL;
+    }
+    ERROR("%s", prompt);
+    size_t rsz = USER_LEN;
+    if (getline(&result, &rsz, stdin) == -1) {
+        ERROR("Cannot get input\n");
+        return NULL;
+    }
+    result[strlen(result) - 1] = '\0';
+
+    return result;
+}
+
+// find_secret returns index of secret in decoded storage.
+// If secret_id == NULL, returns pointer to empty record,
+// otherwise, returns pointer to record with matching ID.
+// If nothing found, returns NULL
+secretRecord *find_secret(char *secret_id) {
+    secretRecord *secrets = (secretRecord *)storage;
+    secretRecord *r = NULL;
+    for (int i = 0; i < STORAGE_LEN; i++) {
+        if (secret_id == NULL && secrets[i].id[0] == '\0') {
+            r = &secrets[i];
+            break;
+        }
+        if (secret_id != NULL && strncmp(secret_id, secrets[i].id, ID_LEN) == 0) {
+            r = &secrets[i];
+            break;
+        }
+    }
+    return r;
 }
 
 // read storage decrypts the storage contents from file
@@ -354,5 +456,6 @@ int save_storage(char *filename) {
         return -1;
     }
     free(tmp_filename);
+    ERROR("Storage saved to %s\n", filename);
     return 0;
 }

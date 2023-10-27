@@ -34,13 +34,16 @@ unsigned char *pw;
 unsigned char *pw2;
 
 int derive_key(FILE *container, int confirm_pw);
-int store_secret(char *secret_id, char *filename);
+int store_secret(char *secret_id, char *filename, int overwrite);
 int get_secret(char *secret_id, char *filename);
+int delete_secret(char *secret_id, char *filename);
 int list_secrets(char *filename);
 int init_storage(char *filename);
-int read_password(int attempts);
+int read_password(char *prompt, int attempts);
 int read_storage(char *filename);
 int save_storage(char *filename);
+secretRecord *find_secret(char *secret_id);
+char *get_input(char *prompt);
 void usage();
 
 #endif
