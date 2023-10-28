@@ -527,25 +527,27 @@ int read_storage(char *filename) {
     return 0;
 }
 
+// fzf_secret creates list of secrets and pipes it to fzf, allowing user to find desired ID
+// note that fzf only gets IDs and usernames, actual password is returned by get_secret()
 int fzf_secret(char *filename, int pipe_pw) {
     if (read_storage(filename) != 0) {
         STDERR("Cannot read storage\n");
         return -1;
     }
-    ioPipe clip = open_pipe(FZF_CMD);
-    if (clip.w == NULL || clip.r == NULL) {
+    ioPipe fzf = open_pipe(FZF_CMD);
+    if (fzf.w == NULL || fzf.r == NULL) {
         STDERR("Cannot pipe to fzf\n");
         return -1;
     }
     secretRecord *secrets = (secretRecord *)storage;
     for (int i = 0; i < STORAGE_LEN; i++) {
         if (secrets[i].last_updated != 0) {
-            fprintf(clip.w, "%s | user: %s\n", secrets[i].id, secrets[i].user);
+            fprintf(fzf.w, "%s | user: %s\n", secrets[i].id, secrets[i].user);
         }
     }
-    fclose(clip.w);
+    fclose(fzf.w);
     char id[33];
-    if (fscanf(clip.r, "%32s", id) != 1) {
+    if (fscanf(fzf.r, "%32s", id) != 1) {
         STDERR("Cannot get fzf result\n");
         return -1;
     }
@@ -634,14 +636,16 @@ ioPipe open_pipe(char *cmd) {
     if (child == 0) {
         if (dup2(rpipe[1], STDOUT_FILENO) < 0) { // attach output pipe to stdout
             STDERR("Reading pipe error: %s", strerror(errno));
+            exit(-1);
         }
         if (dup2(wpipe[0], STDIN_FILENO) < 0) { // attach input pipe to stdin
             STDERR("Writing pipe error: %s", strerror(errno));
+            exit(-1);
         }
 
-        close(rpipe[0]);                          // close read end of reading pipe
-        close(wpipe[1]);                          // close write end of writing pipe
-        if (execlp(cmd, cmd, (char *)NULL) < 0) { // run engine
+        close(rpipe[0]); // close read end of reading pipe
+        close(wpipe[1]); // close write end of writing pipe
+        if (execlp(cmd, cmd, (char *)NULL) < 0) {
             STDERR("Cannot exec %s: %s\n", cmd, strerror(errno));
             exit(-1);
         }
