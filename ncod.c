@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     char secret_id[ID_LEN];
     enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT, EXPORT, IMPORT } action = NONE;
     int pipe_pw = 0;
-    while ((ch = getopt(argc, argv, "ielcm:s:g:u:d:f:")) != -1) {
+    while ((ch = getopt(argc, argv, "hielcm:s:g:u:d:f:")) != -1) {
         switch (ch) {
         case 'i':
             action = INIT;
@@ -91,6 +91,7 @@ int main(int argc, char *argv[]) {
             }
             strncpy(filename, optarg, strlen(optarg));
             break;
+        case 'h':
         case '?':
         default:
             usage();
@@ -100,6 +101,9 @@ int main(int argc, char *argv[]) {
 
     int result;
     switch (action) {
+    case NONE:
+        result = fzf_secret(filename, pipe_pw);
+        break;
     case GET:
         result = get_secret(secret_id, filename, pipe_pw);
         break;
@@ -146,15 +150,16 @@ int main(int argc, char *argv[]) {
 }
 
 void usage() {
-    STDERR("Usage:\n"
-           "ncod -i [-f FILE]\t\t\tInit secret storage\n"
-           "ncod [-c] -g ID [ -f FILE]\t\t\tGet secret\n"
-           "ncod -s ID [ -f FILE]\t\t\tStore secret\n"
-           "ncod -u ID [ -f FILE]\t\t\tUpdate secret\n"
-           "ncod -d ID [ -f FILE]\t\t\tDelete secret\n"
-           "ncod -l [ -f FILE]\t\t\tList all secrets\n"
-           "ncod -e [ -f FILE]\t\t\tExport all secrets\n"
-           "ncod -m SECRETS_FILE [ -f FILE]\t\tImport secrets\n");
+    STDERR("Usage:\n\n"
+           "ncod [-c]                         Use fzf to find secret\n"
+           "ncod -i [-f FILE]                 Init secret storage\n"
+           "ncod [-c] -g ID [ -f FILE]        Get secret\n"
+           "ncod -s ID [ -f FILE]             Store secret\n"
+           "ncod -u ID [ -f FILE] .           Update secret\n"
+           "ncod -d ID [ -f FILE]             Delete secret\n"
+           "ncod -l [ -f FILE]                List all secrets\n"
+           "ncod -e [ -f FILE]                Export all secrets\n"
+           "ncod -m SECRETS_FILE [ -f FILE]   Import secrets\n");
 }
 
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
@@ -252,9 +257,11 @@ int init_storage(char *filename) {
 
 // get_secret finds secret by its ID and prints it to stdout
 int get_secret(char *secret_id, char *filename, int pipe_pw) {
-    if (read_storage(filename) != 0) {
-        STDERR("Cannot read storage\n");
-        return -1;
+    if (filename != NULL) {
+        if (read_storage(filename) != 0) {
+            STDERR("Cannot read storage\n");
+            return -1;
+        }
     }
 
     secretRecord *record = find_secret(secret_id);
@@ -266,13 +273,18 @@ int get_secret(char *secret_id, char *filename, int pipe_pw) {
     if (pipe_pw == 0) {
         printf("User: %s\nPassword: %s\n", record->user, record->secret);
     } else {
-        int fd = open_pipe(CLIPBOARD_CMD);
-        if (fd == -1) {
-            STDERR("Cannot copy to clipboard\n");
+        ioPipe clip = open_pipe(CLIPBOARD_CMD);
+        if (clip.w == NULL) {
+            STDERR("Cannot pipe to %s\n", CLIPBOARD_CMD);
             return -1;
         }
-        write(fd, record->secret, SECRET_LEN);
-        close(fd);
+        if (fwrite(record->secret, SECRET_LEN, 1, clip.w) != 1) {
+            STDERR("Cannot copy to clipboard\n");
+            fclose(clip.w);
+            return -1;
+        };
+        fclose(clip.w);
+        fclose(clip.r);
         printf("User: %s\nPassword: (copied to clipboard)\n", record->user);
     }
     return 0;
@@ -515,6 +527,34 @@ int read_storage(char *filename) {
     return 0;
 }
 
+int fzf_secret(char *filename, int pipe_pw) {
+    if (read_storage(filename) != 0) {
+        STDERR("Cannot read storage\n");
+        return -1;
+    }
+    ioPipe clip = open_pipe(FZF_CMD);
+    if (clip.w == NULL || clip.r == NULL) {
+        STDERR("Cannot pipe to fzf\n");
+        return -1;
+    }
+    secretRecord *secrets = (secretRecord *)storage;
+    for (int i = 0; i < STORAGE_LEN; i++) {
+        if (secrets[i].last_updated != 0) {
+            fprintf(clip.w, "%s | user: %s\n", secrets[i].id, secrets[i].user);
+        }
+    }
+    fclose(clip.w);
+    char id[33];
+    if (fscanf(clip.r, "%32s", id) != 1) {
+        STDERR("Cannot get fzf result\n");
+        return -1;
+    }
+
+    STDERR("Looking for secret %s\n", id);
+    return get_secret(id, NULL, pipe_pw);
+    return 0;
+}
+
 // save_storage encrypts contents of "storage" variable using the key in "key" variable
 // encryption nonce from "nonce" is regenerated, password salt in "salt" is reused.
 // To prevent accidental corruption of storage, saves data to temporary file
@@ -569,16 +609,47 @@ int save_storage(char *filename) {
     return 0;
 }
 
-int open_pipe(char *cmd) {
-    int pipes[2];
-    if (pipe(pipes) != 0) {
+// open_pipe opens bi-directional channel with cmd via two pipes
+// ioPipe.r is attached to cmd's stdout
+// ioPipe.w is attached to cmd's stdin
+ioPipe open_pipe(char *cmd) {
+    int rpipe[2];
+    int wpipe[2];
+    ioPipe r = {.r = NULL, .w = NULL};
+
+    if (pipe(rpipe) != 0) { // reading from cmd
         STDERR("Cannot create pipe: %s", strerror(errno));
+        return r;
     }
-    if (fork() == 0) {
-        dup2(pipes[0], STDIN_FILENO);
-        close(pipes[1]);
-        execlp(cmd, cmd, (char *)NULL);
+    if (pipe(wpipe) != 0) { // writing to cmd
+        STDERR("Cannot create pipe: %s", strerror(errno));
+        return r;
     }
-    close(pipes[0]);
-    return pipes[1];
+
+    int child = fork();
+    if (child < 0) {
+        STDERR("Cannot fork: %s", strerror(errno));
+        return r;
+    }
+    if (child == 0) {
+        if (dup2(rpipe[1], STDOUT_FILENO) < 0) { // attach output pipe to stdout
+            STDERR("Reading pipe error: %s", strerror(errno));
+        }
+        if (dup2(wpipe[0], STDIN_FILENO) < 0) { // attach input pipe to stdin
+            STDERR("Writing pipe error: %s", strerror(errno));
+        }
+
+        close(rpipe[0]);                          // close read end of reading pipe
+        close(wpipe[1]);                          // close write end of writing pipe
+        if (execlp(cmd, cmd, (char *)NULL) < 0) { // run engine
+            STDERR("Cannot exec %s: %s\n", cmd, strerror(errno));
+            exit(-1);
+        }
+    }
+    close(rpipe[1]);
+    close(wpipe[0]);
+    r.r = fdopen(rpipe[0], "r");
+    r.w = fdopen(wpipe[1], "w");
+
+    return r;
 }

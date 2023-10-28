@@ -22,6 +22,11 @@ typedef struct {
     char secret[SECRET_LEN + 1];
 } secretRecord;
 
+typedef struct {
+    FILE *r;
+    FILE *w;
+} ioPipe;
+
 // declare all used memory as globals to simplify tracking of its lifecycle,
 // especially secret data
 // non-secret data
@@ -38,6 +43,7 @@ secretRecord *tmp_record;
 int derive_key(FILE *container, int confirm_pw);
 int store_secret(char *secret_id, char *filename, int overwrite);
 int get_secret(char *secret_id, char *filename, int pipe_pw);
+int fzf_secret(char *filename, int pipe_pw);
 int delete_secret(char *secret_id, char *filename);
 int list_secrets(char *filename);
 int init_storage(char *filename);
@@ -46,7 +52,7 @@ int read_storage(char *filename);
 int save_storage(char *filename);
 int export_secrets(char *filename);
 int import_secrets(FILE *src, char *filename);
-int open_pipe(char *cmd);
+ioPipe open_pipe(char *cmd);
 secretRecord *find_secret(char *secret_id);
 char *get_input(char *prompt);
 void usage();

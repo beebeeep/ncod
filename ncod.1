@@ -6,15 +6,17 @@
 .Nd Minimalistic CLI password manager
 
 .Sh SYNOPSIS
-.Nm ncad
+.Nm ncod
+.Op Fl f Ar file
+.Nm ncod
 .Fl g | s | l | u | d
 .Op Ar secret_id
 .Op Fl c
 .Op Fl f Ar file
-.Nm ncad
+.Nm ncod
 .Fl e
 .Op Fl f Ar file
-.Nm ncad
+.Nm ncod
 .Fl m
 .Op Ar secrets_file
 .Op Fl f Ar file
@@ -26,25 +28,32 @@ is a utility for storing usernames and password in encrypted file.
 It us meant to be as simple as possible while providing
 the bare minimum of functionality.
 
-Usage:
+.Sh USAGE:
+
 .Bl -tag -width Ds
-.It Fl i
+.It Nm Op Fl c
+Use external
+.Ic fzf
+to find secret in storage (add
+.Fl c
+to copy password to clipboard)
+.It Nm Fl i
 Initialize secure storage
-.It Fl g Ar secret_id Op Fl c
+.It Nm Fl g Ar secret_id Op Fl c
 Get secret from storage (add
 .Fl c
 to copy password to clipboard)
-.It Fl s Ar secret_id
+.It Nm Fl s Ar secret_id
 Put secret to storage (you will be prompted for username and password)
-.It Fl u Ar secret_id
+.It Nm Fl u Ar secret_id
 Update secret in storage (you will be prompted for username and password)
-.It Fl d Ar secret_id
+.It Nm Fl d Ar secret_id
 Delete secret from storage (you will be prompted for username and password)
-.It Fl l
+.It Nm Fl l
 List all secrets in storage (only IDs and usernames)
-.It Fl e
+.It Nm Fl e
 Export all secrets (will be written to stdout). Secrets are exported as simple string "<ID> <USER> <SECRET>", each secret on new line.
-.It Fl m Ar secrets_file
+.It Nm Fl m Ar secrets_file
 Import secrets from file (same format as in
 .Fl e
 ). Note that incorrectly formatted file may lead to some garbage imported.

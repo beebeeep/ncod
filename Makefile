@@ -1,15 +1,19 @@
 TARGET=ncod
-OS := $(shell uname)
-LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libsodium)
+
 CC ?= clang
 INSTALL ?= install
 CFLAGS ?= -Wall -Werror
+FZF_CMD ?= fzf
+
 CFLAGS := $(CFLAGS)  $(shell pkg-config --cflags libsodium)
+LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libsodium)
 
 ifeq ($(DEBUG),on)
 	CFLAGS := $(CFLAGS) -g -D DEBUG
+	CLIPBOARD_CMD := cat
 endif
 
+OS := $(shell uname)
 ifeq ($(OS),Linux)
 	CLIPBOARD_CMD ?= xclip
 	CFLAGS := $(CFLAGS) -D LINUX
@@ -30,7 +34,7 @@ else
 	MANDIR ?= /usr/share/man
 endif
 
-CFLAGS := $(CFLAGS) -D CLIPBOARD_CMD='"$(CLIPBOARD_CMD)"'
+CFLAGS := $(CFLAGS) -D CLIPBOARD_CMD='"$(CLIPBOARD_CMD)"' -D FZF_CMD='"$(FZF_CMD)"'
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)
