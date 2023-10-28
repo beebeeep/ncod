@@ -135,6 +135,7 @@ int main(int argc, char *argv[]) {
     sodium_memzero(pw2, SECRET_LEN);
     sodium_memzero(storage, STORAGE_BYTES);
     sodium_memzero(key, crypto_secretbox_KEYBYTES);
+    sodium_memzero(tmp_record, sizeof(secretRecord));
     sodium_free(pw);
     sodium_free(pw2);
     sodium_free(storage);
@@ -224,7 +225,7 @@ int read_password(char *prompt, int attempts) {
 }
 
 // init_storage initializes empty secret storage
-// file will be overwritten
+// will ask user to overwrite file if it exists
 int init_storage(char *filename) {
     struct stat t;
     STDERR("Initializing secret storage in %s\n", filename);
@@ -576,7 +577,7 @@ int open_pipe(char *cmd) {
     if (fork() == 0) {
         dup2(pipes[0], STDIN_FILENO);
         close(pipes[1]);
-        execlp(cmd, cmd);
+        execlp(cmd, cmd, (char *)NULL);
     }
     close(pipes[0]);
     return pipes[1];
