@@ -11,6 +11,7 @@
 #else
 #include <sys/errno.h>
 #endif
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -221,7 +222,16 @@ int read_password(char *prompt, int attempts) {
 // init_storage initializes empty secret storage
 // file will be overwritten
 int init_storage(char *filename) {
+    struct stat t;
     ERROR("Initializing secret storage in %s\n", filename);
+    if (stat(filename, &t) == 0) {
+        char *ans = get_input("Storage file already exists, overwrite (y/n)? ");
+        if (ans != NULL && (ans[0] != 'y' && ans[0] != 'Y')) {
+            free(ans);
+            return -1;
+        }
+    }
+
     if (derive_key(NULL, 1) != 0) {
         ERROR("Cannot read password\n");
         return -1;
