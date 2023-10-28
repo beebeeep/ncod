@@ -18,7 +18,9 @@ Default install location is `/usr/bin` in Linux and `/usr/local/bin` in BSDs.
 
 1. Init the storage: `ncod -i [-f FILE]`
 2. Store the secret: `ncod -s SECRET_ID [-f FILE]`
-3. Get the secret: `ncod -g SECRET_ID [-f FILE]` 
+3. Get the secret (`-c` to copy secret to clipboard): `ncod -g SECRET_ID [-c] [-f FILE]` 
 4. List secrets: `ncod -l [-f FILE]`
+5. Export secrets: `ncod -e [-f FILE]`
+6. Import secrets: `ncod -m SECETS_FILE  [-f FILE]`
    
 By default, ncod stores passwords in ~/.ncod.db

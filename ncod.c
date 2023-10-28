@@ -19,7 +19,7 @@
 
 int main(int argc, char *argv[]) {
     if (sodium_init() != 0) {
-        ERROR("Failed to initialize libsodium\n");
+        STDERR("Failed to initialize libsodium\n");
         return -1;
     }
 
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     char *filename = malloc(256);
     FILE *import_file;
     if (key == NULL || storage == NULL || pw == NULL || pw2 == NULL || filename == NULL) {
-        ERROR("Cannot allocate memory\n");
+        STDERR("Cannot allocate memory\n");
         return -1;
     }
 
@@ -44,13 +44,17 @@ int main(int argc, char *argv[]) {
 
     char secret_id[ID_LEN];
     enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT, EXPORT, IMPORT } action = NONE;
-    while ((ch = getopt(argc, argv, "ielm:s:g:u:d:f:")) != -1) {
+    int pipe_pw = 0;
+    while ((ch = getopt(argc, argv, "ielcm:s:g:u:d:f:")) != -1) {
         switch (ch) {
         case 'i':
             action = INIT;
             break;
         case 'l':
             action = LIST;
+            break;
+        case 'c':
+            pipe_pw = 1;
             break;
         case 'e':
             action = EXPORT;
@@ -59,7 +63,7 @@ int main(int argc, char *argv[]) {
             action = IMPORT;
             import_file = fopen(optarg, "r");
             if (import_file == NULL) {
-                ERROR("Cannot open %s: %s", optarg, strerror(errno));
+                STDERR("Cannot open %s: %s", optarg, strerror(errno));
                 return -1;
             }
             break;
@@ -82,7 +86,7 @@ int main(int argc, char *argv[]) {
         case 'f':
             filename = (char *)realloc(filename, strlen(optarg));
             if (filename == NULL) {
-                ERROR("Cannot allocate memory\n");
+                STDERR("Cannot allocate memory\n");
                 return -1;
             }
             strncpy(filename, optarg, strlen(optarg));
@@ -97,7 +101,7 @@ int main(int argc, char *argv[]) {
     int result;
     switch (action) {
     case GET:
-        result = get_secret(secret_id, filename);
+        result = get_secret(secret_id, filename, pipe_pw);
         break;
     case STORE:
         result = store_secret(secret_id, filename, 0);
@@ -141,15 +145,15 @@ int main(int argc, char *argv[]) {
 }
 
 void usage() {
-    ERROR("Usage:\n"
-          "ncod -i [-f FILE]\t\t\tInit secret storage\n"
-          "ncod -g ID [ -f FILE]\t\t\tGet secret\n"
-          "ncod -s ID [ -f FILE]\t\t\tStore secret\n"
-          "ncod -u ID [ -f FILE]\t\t\tUpdate secret\n"
-          "ncod -d ID [ -f FILE]\t\t\tDelete secret\n"
-          "ncod -l [ -f FILE]\t\t\tList all secrets\n"
-          "ncod -e [ -f FILE]\t\t\tExport all secrets\n"
-          "ncod -m SECRETS_FILE [ -f FILE]\t\tImport secrets\n");
+    STDERR("Usage:\n"
+           "ncod -i [-f FILE]\t\t\tInit secret storage\n"
+           "ncod [-c] -g ID [ -f FILE]\t\t\tGet secret\n"
+           "ncod -s ID [ -f FILE]\t\t\tStore secret\n"
+           "ncod -u ID [ -f FILE]\t\t\tUpdate secret\n"
+           "ncod -d ID [ -f FILE]\t\t\tDelete secret\n"
+           "ncod -l [ -f FILE]\t\t\tList all secrets\n"
+           "ncod -e [ -f FILE]\t\t\tExport all secrets\n"
+           "ncod -m SECRETS_FILE [ -f FILE]\t\tImport secrets\n");
 }
 
 // derive_key asks user for password and derives encryption key, salt and nonce from it.
@@ -167,18 +171,18 @@ int derive_key(FILE *container, int confirm_pw) {
     } else {
         fseek(container, 0, SEEK_SET);
         if (fread(salt, crypto_pwhash_SALTBYTES, 1, container) != 1) {
-            ERROR("Cannot read container\n");
+            STDERR("Cannot read container\n");
             return -1;
         }
         if (fread(nonce, crypto_secretbox_NONCEBYTES, 1, container) != 1) {
-            ERROR("Cannot read container\n");
+            STDERR("Cannot read container\n");
             return -1;
         }
     }
 
     if (crypto_pwhash(key, crypto_secretbox_KEYBYTES, (char *)pw, SECRET_LEN, salt, crypto_pwhash_OPSLIMIT_INTERACTIVE,
                       crypto_pwhash_MEMLIMIT_INTERACTIVE, crypto_pwhash_ALG_DEFAULT) != 0) {
-        ERROR("Key derivation failed\n");
+        STDERR("Key derivation failed\n");
         return -1;
     }
 
@@ -202,12 +206,12 @@ int read_password(char *prompt, int attempts) {
             return 0;
         }
         if (strlen((char *)pw) == 0) {
-            ERROR("Empty password?\n");
+            STDERR("Empty password?\n");
             continue;
         }
         readpassphrase("Repeat password: ", (char *)pw2, SECRET_LEN, 0);
         if (strncmp((char *)pw, (char *)pw2, SECRET_LEN) != 0) {
-            ERROR("Passwords do not match, try again\n");
+            STDERR("Passwords do not match, try again\n");
         } else {
             result = 0;
             break;
@@ -223,7 +227,7 @@ int read_password(char *prompt, int attempts) {
 // file will be overwritten
 int init_storage(char *filename) {
     struct stat t;
-    ERROR("Initializing secret storage in %s\n", filename);
+    STDERR("Initializing secret storage in %s\n", filename);
     if (stat(filename, &t) == 0) {
         char *ans = get_input("Storage file already exists, overwrite (y/n)? ");
         if (ans != NULL && (ans[0] != 'y' && ans[0] != 'Y')) {
@@ -233,7 +237,7 @@ int init_storage(char *filename) {
     }
 
     if (derive_key(NULL, 1) != 0) {
-        ERROR("Cannot read password\n");
+        STDERR("Cannot read password\n");
         return -1;
     }
 
@@ -241,48 +245,60 @@ int init_storage(char *filename) {
     if (save_storage(filename) == 0) {
         return 0;
     }
-    ERROR("Failed to initialize secret storage in %s\n", filename);
+    STDERR("Failed to initialize secret storage in %s\n", filename);
     return -1;
 }
 
 // get_secret finds secret by its ID and prints it to stdout
-int get_secret(char *secret_id, char *filename) {
+int get_secret(char *secret_id, char *filename, int pipe_pw) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
     secretRecord *record = find_secret(secret_id);
     if (record == NULL) {
-        ERROR("Secret not found\n");
+        STDERR("Secret not found\n");
         return -1;
     }
-    printf("User: %s\nPassword: %s\n", record->user, record->secret);
+
+    if (pipe_pw == 0) {
+        printf("User: %s\nPassword: %s\n", record->user, record->secret);
+    } else {
+        int fd = open_pipe(CLIPBOARD_CMD);
+        if (fd == -1) {
+            STDERR("Cannot copy to clipboard\n");
+            return -1;
+        }
+        write(fd, record->secret, SECRET_LEN);
+        close(fd);
+        printf("User: %s\nPassword: (copied to clipboard)\n", record->user);
+    }
     return 0;
 }
 
 // delete secret find secret by ID and deletes it from storage
 int delete_secret(char *secret_id, char *filename) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
     secretRecord *record = find_secret(secret_id);
     if (record == NULL) {
-        ERROR("Secret not found");
+        STDERR("Secret not found");
         return -1;
     }
 
     memset(record, 0, sizeof(secretRecord));
-    ERROR("Secret \"%s\" was deleted\n", secret_id);
+    STDERR("Secret \"%s\" was deleted\n", secret_id);
     return save_storage(filename);
 }
 
 // list_secrets prints all secrets (only IDs and usernames) in storage
 int list_secrets(char *filename) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
@@ -299,7 +315,7 @@ int list_secrets(char *filename) {
 
 int export_secrets(char *filename) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
@@ -315,7 +331,7 @@ int export_secrets(char *filename) {
 // import_secrets reads secrets from src and writes them to the storage
 int import_secrets(FILE *src, char *filename) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
@@ -331,17 +347,17 @@ int import_secrets(FILE *src, char *filename) {
             break;
         }
         if (n != 3) {
-            ERROR("Incorrect file format at line %d, stopping import\n", lineno);
+            STDERR("Incorrect file format at line %d, stopping import\n", lineno);
             break;
         }
-        ERROR("Importing secret %s\n", tmp_record->id);
+        STDERR("Importing secret %s\n", tmp_record->id);
         lineno++;
         secretRecord *r = find_secret(tmp_record->id);
         if (r == NULL) {
             r = find_secret(NULL);
         }
         if (r == NULL) {
-            ERROR("Too many secrets, stopping import\n");
+            STDERR("Too many secrets, stopping import\n");
             break;
         }
         count++;
@@ -350,7 +366,7 @@ int import_secrets(FILE *src, char *filename) {
         strncpy(r->secret, tmp_record->secret, SECRET_LEN);
         r->last_updated = time(NULL);
     }
-    ERROR("Imported %d secrets\n", count);
+    STDERR("Imported %d secrets\n", count);
 
     return save_storage(filename);
 }
@@ -359,7 +375,7 @@ int import_secrets(FILE *src, char *filename) {
 // if there is secret with same ID, it will prompt user if they want to overwrite it, unless overwrite != 0
 int store_secret(char *secret_id, char *filename, int overwrite) {
     if (read_storage(filename) != 0) {
-        ERROR("Cannot read storage\n");
+        STDERR("Cannot read storage\n");
         return -1;
     }
 
@@ -383,17 +399,17 @@ int store_secret(char *secret_id, char *filename, int overwrite) {
     } else if (existing == NULL && vacant != NULL) {
         record = vacant;
     } else {
-        ERROR("No more space for secrets :(\n)");
+        STDERR("No more space for secrets :(\n)");
     }
 
     if (record == NULL) {
-        ERROR("Password not stored.\n");
+        STDERR("Password not stored.\n");
         return -1;
     }
 
     char *user = get_input(user_prompt);
     if (user == NULL) {
-        ERROR("Cannot get username\n");
+        STDERR("Cannot get username\n");
         return -1;
     }
     if (strlen(user) == 0) {
@@ -402,17 +418,17 @@ int store_secret(char *secret_id, char *filename, int overwrite) {
             free(user);
             user = NULL;
         } else {
-            ERROR("Empty username?\n");
+            STDERR("Empty username?\n");
             return -1;
         }
     }
     if (user != NULL && strlen(user) > USER_LEN) {
-        ERROR("Too long username, max %d characters", USER_LEN);
+        STDERR("Too long username, max %d characters", USER_LEN);
         return -1;
     }
 
     if (read_password("Password: ", 3) != 0) {
-        ERROR("Cannot get password\n");
+        STDERR("Cannot get password\n");
     }
 
     strncpy(record->id, secret_id, ID_LEN);
@@ -432,13 +448,13 @@ int store_secret(char *secret_id, char *filename, int overwrite) {
 char *get_input(char *prompt) {
     char *result = malloc(USER_LEN);
     if (result == NULL) {
-        ERROR("Cannot allocate memory.\n");
+        STDERR("Cannot allocate memory.\n");
         return NULL;
     }
-    ERROR("%s", prompt);
+    STDERR("%s", prompt);
     size_t rsz = USER_LEN;
     if (getline(&result, &rsz, stdin) == -1) {
-        ERROR("Cannot get input\n");
+        STDERR("Cannot get input\n");
         return NULL;
     }
     result[strlen(result) - 1] = '\0';
@@ -471,27 +487,27 @@ secretRecord *find_secret(char *secret_id) {
 int read_storage(char *filename) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
-        ERROR("Cannot open %s: %s\n", filename, strerror(errno));
+        STDERR("Cannot open %s: %s\n", filename, strerror(errno));
         return -1;
     }
 
     if (derive_key(file, 0) != 0) {
-        ERROR("Cannot read password\n");
+        STDERR("Cannot read password\n");
         return -1;
     }
     if (fread(ciphertext, CIPHER_BYTES, 1, file) < 0) {
-        ERROR("Cannot read container\n");
+        STDERR("Cannot read container\n");
         return -1;
     }
     fseek(file, sizeof(salt) + sizeof(nonce), SEEK_SET);
 
     if (crypto_secretbox_open_easy(storage, ciphertext, CIPHER_BYTES, nonce, key) != 0) {
-        ERROR("Cannot decode container\n");
+        STDERR("Cannot decode container\n");
         return -1;
     }
 
     if (fclose(file) != 0) {
-        ERROR("Cannot close file: %s\n", strerror(errno));
+        STDERR("Cannot close file: %s\n", strerror(errno));
         return -1;
     }
 
@@ -504,7 +520,7 @@ int read_storage(char *filename) {
 // and only then renames it to specified name
 int save_storage(char *filename) {
     if (key == NULL) {
-        ERROR("Storage is not opened");
+        STDERR("Storage is not opened");
         return -1;
     }
 
@@ -515,7 +531,7 @@ int save_storage(char *filename) {
 
     int filedes = mkstemp(tmp_filename);
     if (filedes < 0) {
-        ERROR("Cannot create temporary file: %s\n", strerror(errno));
+        STDERR("Cannot create temporary file: %s\n", strerror(errno));
         return -1;
     }
 
@@ -524,30 +540,44 @@ int save_storage(char *filename) {
 
     // write header
     if (write(filedes, salt, sizeof(salt)) < 0) {
-        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
+        STDERR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
     if (write(filedes, nonce, sizeof(nonce)) < 0) {
-        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
+        STDERR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
 
     // encode storage and write it to the file
     crypto_secretbox_easy(ciphertext, storage, STORAGE_BYTES, nonce, key);
     if (write(filedes, ciphertext, CIPHER_BYTES) < 0) {
-        ERROR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
+        STDERR("Cannot write to temporary file %s: %s", tmp_filename, strerror(errno));
         return -1;
     }
 
     if (close(filedes) != 0) {
-        ERROR("Cannot close temporary file %s: %s\n", tmp_filename, strerror(errno));
+        STDERR("Cannot close temporary file %s: %s\n", tmp_filename, strerror(errno));
         return -1;
     }
     if (rename(tmp_filename, filename) != 0) {
-        ERROR("Cannot move temporary file %s to %s: %s\n", tmp_filename, filename, strerror(errno));
+        STDERR("Cannot move temporary file %s to %s: %s\n", tmp_filename, filename, strerror(errno));
         return -1;
     }
     free(tmp_filename);
-    ERROR("Storage saved to %s\n", filename);
+    STDERR("Storage saved to %s\n", filename);
     return 0;
+}
+
+int open_pipe(char *cmd) {
+    int pipes[2];
+    if (pipe(pipes) != 0) {
+        STDERR("Cannot create pipe: %s", strerror(errno));
+    }
+    if (fork() == 0) {
+        dup2(pipes[0], STDIN_FILENO);
+        close(pipes[1]);
+        execlp(cmd, cmd);
+    }
+    close(pipes[0]);
+    return pipes[1];
 }

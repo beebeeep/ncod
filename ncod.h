@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#define ERROR(...) (fprintf(stderr, __VA_ARGS__))
+#define STDERR(...) (fprintf(stderr, __VA_ARGS__))
 
 #define STORAGE_LEN 1000
 #define STORAGE_BYTES (sizeof(secretRecord) * STORAGE_LEN)
@@ -37,7 +37,7 @@ secretRecord *tmp_record;
 
 int derive_key(FILE *container, int confirm_pw);
 int store_secret(char *secret_id, char *filename, int overwrite);
-int get_secret(char *secret_id, char *filename);
+int get_secret(char *secret_id, char *filename, int pipe_pw);
 int delete_secret(char *secret_id, char *filename);
 int list_secrets(char *filename);
 int init_storage(char *filename);
@@ -46,6 +46,7 @@ int read_storage(char *filename);
 int save_storage(char *filename);
 int export_secrets(char *filename);
 int import_secrets(FILE *src, char *filename);
+int open_pipe(char *cmd);
 secretRecord *find_secret(char *secret_id);
 char *get_input(char *prompt);
 void usage();

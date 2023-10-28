@@ -9,6 +9,7 @@
 .Nm ncad
 .Fl g | s | l | u | d
 .Op Ar secret_id
+.Op Fl c
 .Op Fl f Ar file
 .Nm ncad
 .Fl e
@@ -29,8 +30,10 @@ Usage:
 .Bl -tag -width Ds
 .It Fl i
 Initialize secure storage
-.It Fl g Ar secret_id
-Get secret from storage
+.It Fl g Ar secret_id Op Fl c
+Get secret from storage (add
+.Fl c
+to copy password to clipboard)
 .It Fl s Ar secret_id
 Put secret to storage (you will be prompted for username and password)
 .It Fl u Ar secret_id
@@ -50,6 +53,12 @@ Import secrets from file (same format as in
 You can also specify file to use for storage using
 .Fl f Ar file
 
+Clipboard command is
+.Ic xclip
+for Linux and BSDs and
+.Ic pbcopy
+for Darwin (Mac OS X)
+
 .Sh EXIT STATUS
 Exits 0 on success and -1 if an error occurs.
 
@@ -57,3 +66,6 @@ Exits 0 on success and -1 if an error occurs.
 .Bl -tag -width indent -compact
 .It Pa ~/.ncod.db
 Default location of password storage
+
+.Sh AUTHORS
+.An Danila Migalin Aq me@miga.me.uk

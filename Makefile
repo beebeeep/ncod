@@ -11,19 +11,26 @@ ifeq ($(DEBUG),on)
 endif
 
 ifeq ($(OS),Linux)
+	CLIPBOARD_CMD ?= xclip
 	CFLAGS := $(CFLAGS) -D LINUX
 	LDFLAGS := $(LDFLAGS) -lbsd
 	DESTDIR ?= /usr/bin
 	MANDIR ?= /usr/share/man
 else ifeq ($(OS),OpenBSD)
+	CLIPBOARD_CMD ?= xclip
 	CFLAGS := $(CFLAGS) -D OPENBSD
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/local/man
+else ifeq ($(OS),Darwin)
+	CLIPBOARD_CMD ?= pbcopy
+	DESTDIR ?= /usr/local/bin
+	MANDIR ?= /usr/share/man
 else
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/share/man
 endif
 
+CFLAGS := $(CFLAGS) -D CLIPBOARD_CMD='"$(CLIPBOARD_CMD)"'
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)
