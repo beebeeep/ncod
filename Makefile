@@ -4,28 +4,36 @@ CC ?= clang
 INSTALL ?= install
 CFLAGS ?= -Wall -Werror
 FZF_CMD ?= fzf
+OS := $(shell uname)
 
-CFLAGS := $(CFLAGS)  $(shell pkg-config --cflags libsodium)
-LDFLAGS := $(LDFLAGS) $(shell pkg-config --libs libsodium)
+
 
 ifeq ($(DEBUG),on)
 	CFLAGS := $(CFLAGS) -g -D DEBUG
 	CLIPBOARD_CMD := cat
 endif
 
-OS := $(shell uname)
 ifeq ($(OS),Linux)
+	PKGCONFIG := pkg-config
 	CLIPBOARD_CMD ?= xclip
 	CFLAGS := $(CFLAGS) -D LINUX
 	LDFLAGS := $(LDFLAGS) -lbsd
 	DESTDIR ?= /usr/bin
 	MANDIR ?= /usr/share/man
 else ifeq ($(OS),OpenBSD)
+	PKGCONFIG := pkg-config
 	CLIPBOARD_CMD ?= xclip
-	CFLAGS := $(CFLAGS) -D OPENBSD
+	CFLAGS := $(CFLAGS) -D BSD
+	DESTDIR ?= /usr/local/bin
+	MANDIR ?= /usr/local/man
+else ifeq ($(OS),FreeBSD)
+	PKGCONFIG := pkgconf
+	CLIPBOARD_CMD ?= xclip
+	CFLAGS := $(CFLAGS) -D BSD
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/local/man
 else ifeq ($(OS),Darwin)
+	PKGCONFIG := pkg-config
 	CLIPBOARD_CMD ?= pbcopy
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/local/share/man
@@ -34,7 +42,9 @@ else
 	MANDIR ?= /usr/share/man
 endif
 
-CFLAGS := $(CFLAGS) -D CLIPBOARD_CMD='"$(CLIPBOARD_CMD)"' -D FZF_CMD='"$(FZF_CMD)"'
+CFLAGS := $(CFLAGS)  $(shell $(PKGCONFIG) --cflags libsodium) -D CLIPBOARD_CMD='"$(CLIPBOARD_CMD)"' -D FZF_CMD='"$(FZF_CMD)"'
+LDFLAGS := $(LDFLAGS) $(shell $(PKGCONFIG) --libs libsodium)
+
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)
