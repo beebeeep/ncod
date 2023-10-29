@@ -28,7 +28,7 @@ else ifeq ($(OS),OpenBSD)
 else ifeq ($(OS),Darwin)
 	CLIPBOARD_CMD ?= pbcopy
 	DESTDIR ?= /usr/local/bin
-	MANDIR ?= /usr/share/man
+	MANDIR ?= /usr/local/share/man
 else
 	DESTDIR ?= /usr/local/bin
 	MANDIR ?= /usr/share/man
@@ -55,7 +55,7 @@ $(TARGET): $(OBJECTS)
 
 install: $(TARGET)
 	$(INSTALL) -m 0555 ncod $(DESTDIR)/ncod
-	$(INSTALL) -m 0555 ncod.1 $(MANDIR)/man1/ncod.1
+	$(INSTALL) -D -m 0555 ncod.1 $(MANDIR)/man1/ncod.1
 
 
 clean:
