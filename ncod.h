@@ -10,10 +10,10 @@
 #define STORAGE_LEN 1000
 #define STORAGE_BYTES (sizeof(secretRecord) * STORAGE_LEN)
 #define CIPHER_BYTES (STORAGE_BYTES + crypto_secretbox_MACBYTES)
-#define ID_LEN 32
-#define USER_LEN 64
+#define ID_LEN 128
+#define USER_LEN 128
 #define SECRET_LEN 512
-#define IMPORT_FMT "%32s %64s %512s\n"
+#define IMPORT_FMT "%128s %128s %512s\n"
 
 typedef struct {
     time_t last_updated;
