@@ -278,7 +278,7 @@ int get_secret(char *secret_id, char *filename, int pipe_pw) {
             STDERR("Cannot pipe to %s\n", CLIPBOARD_CMD);
             return -1;
         }
-        if (fwrite(record->secret, SECRET_LEN, 1, clip.w) != 1) {
+        if (fwrite(record->secret, strlen(record->secret), 1, clip.w) != 1) {
             STDERR("Cannot copy to clipboard\n");
             fclose(clip.w);
             return -1;
