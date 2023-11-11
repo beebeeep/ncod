@@ -27,6 +27,7 @@ typedef struct {
     FILE *w;
 } ioPipe;
 
+int clean_clipboard = 0;
 // declare all used memory as globals to simplify tracking of its lifecycle,
 // especially secret data
 // non-secret data
@@ -53,6 +54,7 @@ int save_storage(char *filename);
 int export_secrets(char *filename);
 int import_secrets(FILE *src, char *filename);
 ioPipe open_pipe(char *cmd);
+int copy_to_clipboard(char *str);
 secretRecord *find_secret(char *secret_id);
 char *get_input(char *prompt);
 void usage();

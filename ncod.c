@@ -146,6 +146,14 @@ int main(int argc, char *argv[]) {
     sodium_free(key);
     sodium_free(tmp_record);
 
+    if (clean_clipboard != 0) {
+        STDERR("Will clear the clipboard in 5 seconds (CTRL+c to cancel)... ");
+        result = -1;
+        sleep(5);
+        result = copy_to_clipboard("********");
+        STDERR("done.\n");
+    }
+
     return result;
 }
 
@@ -273,18 +281,9 @@ int get_secret(char *secret_id, char *filename, int pipe_pw) {
     if (pipe_pw == 0) {
         printf("User: %s\nPassword: %s\n", record->user, record->secret);
     } else {
-        ioPipe clip = open_pipe(CLIPBOARD_CMD);
-        if (clip.w == NULL) {
-            STDERR("Cannot pipe to %s\n", CLIPBOARD_CMD);
+        if (copy_to_clipboard(record->secret) != 0) {
             return -1;
         }
-        if (fwrite(record->secret, strlen(record->secret), 1, clip.w) != 1) {
-            STDERR("Cannot copy to clipboard\n");
-            fclose(clip.w);
-            return -1;
-        };
-        fclose(clip.w);
-        fclose(clip.r);
         printf("User: %s\nPassword: (copied to clipboard)\n", record->user);
     }
     return 0;
@@ -608,6 +607,25 @@ int save_storage(char *filename) {
     }
     free(tmp_filename);
     STDERR("Storage saved to %s\n", filename);
+    return 0;
+}
+
+int copy_to_clipboard(char *str) {
+    ioPipe clip = open_pipe(CLIPBOARD_CMD);
+    if (clip.w == NULL) {
+        STDERR("Cannot pipe to %s\n", CLIPBOARD_CMD);
+        return -1;
+    }
+
+    if (fwrite(str, strlen(str), 1, clip.w) != 1) {
+        STDERR("Cannot copy to clipboard\n");
+        fclose(clip.w);
+        return -1;
+    };
+
+    clean_clipboard = 1;
+    fclose(clip.w);
+    fclose(clip.r);
     return 0;
 }
 
