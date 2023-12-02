@@ -545,8 +545,8 @@ int fzf_secret(char *filename, int pipe_pw) {
         }
     }
     fclose(fzf.w);
-    char id[33];
-    if (fscanf(fzf.r, "%32s", id) != 1) {
+    char id[ID_LEN+1];
+    if (fscanf(fzf.r, FZF_FMT, id) != 1) {
         STDERR("Cannot get fzf result\n");
         return -1;
     }

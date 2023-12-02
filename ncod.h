@@ -14,6 +14,7 @@
 #define USER_LEN 128
 #define SECRET_LEN 512
 #define IMPORT_FMT "%128s %128s %512s\n"
+#define FZF_FMT "%128s"
 
 typedef struct {
     time_t last_updated;
