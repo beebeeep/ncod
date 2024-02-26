@@ -84,12 +84,13 @@ int main(int argc, char *argv[]) {
             strncpy(secret_id, optarg, ID_LEN);
             break;
         case 'f':
-            filename = (char *)realloc(filename, strlen(optarg));
+            filename = (char *)realloc(filename, strlen(optarg)+1);
             if (filename == NULL) {
                 STDERR("Cannot allocate memory\n");
                 return -1;
             }
             strncpy(filename, optarg, strlen(optarg));
+	    filename[strlen(optarg)] = '\0';
             break;
         case 'h':
         case '?':
@@ -395,17 +396,18 @@ int store_secret(char *secret_id, char *filename, int overwrite) {
     secretRecord *existing = find_secret(secret_id);
     secretRecord *vacant = find_secret(NULL);
     secretRecord *record = NULL;
-    char *user_prompt = (char *)malloc(128);
-    snprintf(user_prompt, 128, "Enter username: ");
+    size_t prompt_len = USER_LEN+128;
+    char *user_prompt = (char *)malloc(prompt_len);
+    snprintf(user_prompt, prompt_len, "Enter username: ");
 
     if (existing != NULL && overwrite) {
-        snprintf(user_prompt, 128, "Enter username (leave empty to keep \"%s\"): ", existing->user);
+        snprintf(user_prompt, prompt_len, "Enter username (leave empty to keep \"%s\"): ", existing->user);
         record = existing;
     } else if (existing != NULL && !overwrite) {
         char *ans = get_input("Secret already exists. Overwrite (y/n)? ");
         if (ans != NULL && (ans[0] == 'y' || ans[0] == 'Y')) {
             free(ans);
-            snprintf(user_prompt, 128, "Enter username (leave empty to keep \"%s\"): ", existing->user);
+            snprintf(user_prompt, prompt_len, "Enter username (leave empty to keep \"%s\"): ", existing->user);
             record = existing;
         }
     } else if (existing == NULL && vacant != NULL) {

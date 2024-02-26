@@ -8,6 +8,10 @@ Apart from that, the only other notable feature is that secret storage file of f
 
 ncod uses some external tools, which are optional, but make life better - `xclip` or `pbcopy` to copy passwords to clipboard and [fzf](https://github.com/junegunn/fzf) for browsing your secrets.
 
+# Project status
+I consider this project as stable and overall finished. The program has all the functionality I need and is still well below my self-imposed limit of 1K LoC, counting only around 570 lines. 
+Its functionality and interoperability has been tested on OpenBSD, Linux, and MacOS X running on x86_64, ARM64, and PPC64. No considerable changes or new features are planned, only bugfixes.
+
 # Installation
 The only runtime dependency is [libsodium](https://doc.libsodium.org/). Linux folks will also require libbsd. Build dependencies also include `pkg-config` (`pkg-conf` in FreeBSD).
 
