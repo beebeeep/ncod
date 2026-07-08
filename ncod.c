@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
     snprintf(filename, 256, "%s/.ncod.db", getenv("HOME"));
 #endif
 
-    char secret_id[ID_LEN];
+    char secret_id[ID_LEN + 1];
     enum { NONE, GET, STORE, UPDATE, DELETE, LIST, INIT, EXPORT, IMPORT } action = NONE;
     int pipe_pw = 0;
     while ((ch = getopt(argc, argv, "hielcm:s:g:u:d:f:")) != -1) {
@@ -70,18 +70,22 @@ int main(int argc, char *argv[]) {
         case 's':
             action = STORE;
             strncpy(secret_id, optarg, ID_LEN);
+            secret_id[ID_LEN] = '\0';
             break;
         case 'g':
             action = GET;
             strncpy(secret_id, optarg, ID_LEN);
+            secret_id[ID_LEN] = '\0';
             break;
         case 'u':
             action = UPDATE;
             strncpy(secret_id, optarg, ID_LEN);
+            secret_id[ID_LEN] = '\0';
             break;
         case 'd':
             action = DELETE;
             strncpy(secret_id, optarg, ID_LEN);
+            secret_id[ID_LEN] = '\0';
             break;
         case 'f':
             filename = (char *)realloc(filename, strlen(optarg)+1);
@@ -509,7 +513,7 @@ int read_storage(char *filename) {
         STDERR("Cannot read password\n");
         return -1;
     }
-    if (fread(ciphertext, CIPHER_BYTES, 1, file) < 0) {
+    if (fread(ciphertext, CIPHER_BYTES, 1, file) != 1) {
         STDERR("Cannot read container\n");
         return -1;
     }
