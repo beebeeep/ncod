@@ -12,6 +12,10 @@
 #include <sys/errno.h>
 #endif
 #include <sys/stat.h>
+#include <sys/resource.h>
+#ifdef LINUX
+#include <sys/prctl.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 
@@ -22,6 +26,16 @@ int main(int argc, char *argv[]) {
         STDERR("Failed to initialize libsodium\n");
         return -1;
     }
+
+    struct rlimit no_core = {.rlim_cur = 0, .rlim_max = 0};
+    if (setrlimit(RLIMIT_CORE, &no_core) != 0) {
+        STDERR("Warning: cannot disable core dumps: %s\n", strerror(errno));
+    }
+#ifdef LINUX
+    if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
+        STDERR("Warning: cannot mark process non-dumpable: %s\n", strerror(errno));
+    }
+#endif
 
     key = (unsigned char *)sodium_malloc(crypto_secretbox_KEYBYTES);
     storage = (unsigned char *)sodium_malloc(STORAGE_BYTES);
