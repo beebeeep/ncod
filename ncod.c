@@ -297,7 +297,9 @@ int get_secret(char *secret_id, char *filename, int pipe_pw) {
         return -1;
     }
 
-    if (pipe_pw == 0) {
+    if (isatty(STDOUT_FILENO) == 0) {
+        printf("%s\n", record->secret);
+    } else if (pipe_pw == 0) {
         printf("User: %s\nPassword: %s\n", record->user, record->secret);
     } else {
         if (copy_to_clipboard(record->secret) != 0) {

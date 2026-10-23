@@ -6,7 +6,12 @@ At least unless you, like myself, are having trust issues with things that are t
 
 Apart from that, the only other notable feature is that secret storage file of fixed size (around 766K) that can only store 1000 secrets (you can tune this value by changing STORAGE_LEN macro). The only reason for that is weird flex of hiding how much passwords you are storing and whether you do this at all (so you, essentially, can neither confirm nor deny you have passwords there).
 
-ncod uses some external tools, which are optional, but make life better - `xclip` or `pbcopy` to copy passwords to clipboard and [fzf](https://github.com/junegunn/fzf) for browsing your secrets.
+ncod uses some external tools, which are optional, but make life better - `xclip` or `pbcopy` to copy passwords to clipboard and [fzf](https://github.com/junegunn/fzf) for browsing your secrets. If you use Wayland, you may want to use `wl-copy` instead of `xclip`. For that, override `CLIPBOARD_CMD` variable during compilation:
+```
+CLIPBOARD_CMD=wl-copy make
+```
+
+If ncod's stdout is not a TTY, it will only output the password. This could be useful for shell substitution, for example `some-command --user alice --password $(ncod)`.
 
 # Project status
 I consider this project as stable and overall finished. The program has all the functionality I need and is still well below my self-imposed limit of 1K LoC, counting only around 570 lines. 
